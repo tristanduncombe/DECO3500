@@ -4,10 +4,16 @@ from sqlmodel import Field, SQLModel, Session, create_engine
 from fastapi.responses import FileResponse
 import shutil
 import os
+from functools import lru_cache
 
 app = FastAPI()
 
-DATABASE_URL = "sqlite:///./inventory.db"
+@lru_cache
+def get_database_url() -> str:
+    # Prefer env var (e.g., postgresql+psycopg://user:pass@host:port/db)
+    return os.getenv("DATABASE_URL", "sqlite:///./inventory.db")
+
+DATABASE_URL = get_database_url()
 engine = create_engine(DATABASE_URL, echo=True)
 
 IMAGES_DIR = "images"

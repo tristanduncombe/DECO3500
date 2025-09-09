@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  api:
+    build: ./api
+    container_name: deco_api
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    environment:
+      # Expose base URL for other services if needed
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/deco
+    volumes:
+      # Persist uploaded images between container restarts
+      - api_images:/app/images
+    restart: unless-stopped
+
+  ui:
+    build: ./ui
+    container_name: deco_ui
+    depends_on:
+      - api
+    environment:
+      # Public URL for the browser to call the API
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: deco_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=deco
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  api_images:
+    driver: local
+  db_data:
+    driver: local
