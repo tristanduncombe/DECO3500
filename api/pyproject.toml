@@ -1,0 +1,11 @@
+[project]
+name = "api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.116.1",
+    "fastapi-cli>=0.0.10",
+    "sqlmodel>=0.0.24",
+]
