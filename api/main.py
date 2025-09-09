@@ -1,6 +1,8 @@
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from sqlmodel import Field, SQLModel, Session, create_engine
+from sqlalchemy.exc import OperationalError
+import time
 from fastapi.responses import FileResponse
 import shutil
 import os
@@ -14,7 +16,24 @@ def get_database_url() -> str:
     return os.getenv("DATABASE_URL", "sqlite:///./inventory.db")
 
 DATABASE_URL = get_database_url()
-engine = create_engine(DATABASE_URL, echo=True)
+engine = None  # type: ignore
+
+def init_engine_with_retry(max_attempts: int = 20, delay: float = 1.5):
+    global engine
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            engine = create_engine(DATABASE_URL, echo=True)
+            # test a connection
+            with engine.connect() as conn:
+                conn.execute("SELECT 1")  # simple validation
+            return
+        except OperationalError as e:
+            attempt += 1
+            time.sleep(delay)
+    raise RuntimeError(f"Could not connect to database after {max_attempts} attempts")
+
+init_engine_with_retry()
 
 IMAGES_DIR = "images"
 os.makedirs(IMAGES_DIR, exist_ok=True)
