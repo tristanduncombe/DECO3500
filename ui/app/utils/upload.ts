@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/utils/upload.ts
 export type UploadResult = {
   ok: boolean;

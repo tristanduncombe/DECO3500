@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import CameraCapture from "./components/CameraCapture";
-import uploadFridgeAction from "./utils/upload";
 import styles from "./page.module.css";
 
 type Stage =
@@ -112,8 +111,14 @@ export default function Page() {
 
       setMessage("Upload succeeded");
       setStage("done");
-    } catch (err: any) {
-      setMessage(err?.message || "Upload error");
+    } catch (err: unknown) {
+      let msg = "Upload error";
+      if (err instanceof Error) {
+        msg = err.message;
+      } else if (typeof err === "string") {
+        msg = err;
+      }
+      setMessage(msg);
       setStage("review");
     }
   }
