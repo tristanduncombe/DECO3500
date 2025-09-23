@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 import shutil
 import os
 from functools import lru_cache
-
+from sqlalchemy import text
 app = FastAPI()
 
 @lru_cache
@@ -26,7 +26,7 @@ def init_engine_with_retry(max_attempts: int = 20, delay: float = 1.5):
             engine = create_engine(DATABASE_URL, echo=True)
             # test a connection
             with engine.connect() as conn:
-                conn.execute("SELECT 1")  # simple validation
+                conn.execute(text("SELECT 1"))
             return
         except OperationalError as e:
             attempt += 1
