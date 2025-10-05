@@ -106,8 +106,17 @@ export default function Page() {
 
       let normalizedFood: File | null = null;
       if (foodPhoto) {
-        normalizedFood = foodPhoto instanceof File ? foodPhoto : new File([foodPhoto], "food.jpg", { type: (foodPhoto as any)?.type || "image/jpeg" });
+        if (foodPhoto instanceof File) {
+          normalizedFood = foodPhoto;
+        } else {
+          const maybe = foodPhoto as unknown as { type?: string };
+          const type = maybe && typeof maybe === "object" && typeof maybe.type === "string"
+            ? maybe.type
+            : "image/jpeg";
+          normalizedFood = new File([foodPhoto], "food.jpg", { type });
+        }
       }
+
 
       for (const f of normalizedSelfies) {
         if (!f.type.startsWith("image/")) throw new Error(`${f.name} is not an image`);
