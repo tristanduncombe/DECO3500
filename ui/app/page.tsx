@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import CameraCapture from "./components/CameraCapture";
 import styles from "./page.module.css";
+import { getAuthToken } from "./utils/useAuth"; // optional, may not exist
 
 type Stage =
   | "idle"
@@ -18,6 +19,9 @@ type FoodItem = {
   label: string;
   thumbDataUrl: string;
 };
+
+const MAX_FILES = 4;
+const MAX_BYTES_PER_FILE = 10 * 1024 * 1024; // 10 MB, adjust as needed
 
 const HARDCODED_FOOD: FoodItem[] = [
   {
@@ -78,50 +82,103 @@ export default function Page() {
     setSelectedItemId(null);
   }
 
-  // Submit with selectedItemId included in FormData
-  async function submit() {
+
+
+
+  async function submit(): Promise<void> {
     if (!mode) return;
     setStage("uploading");
     setMessage(null);
-
-    const fd = new FormData();
-    fd.append("action", mode);
-    if (selectedItemId) fd.append("selectedItemId", selectedItemId);
-    selfies.forEach((b, i) => fd.append("selfies", b, `selfie-${i + 1}.jpg`));
-    if (foodPhoto) fd.append("food", foodPhoto, "food.jpg");
+    setProgress(0);
 
     try {
-      // simplest approach: use uploadFridgeAction if you prefer,
-      // here we do a direct XMLHttpRequest to ensure selectedItemId is sent
+      // Normalize and client-side validation
+      const normalizedSelfies: File[] = (selfies || [])
+        .slice(0, MAX_FILES)
+        .map((b, i) => (b instanceof File ? b : new File([b], `selfie-${i + 1}.jpg`, { type: b?.type || "image/jpeg" })));
+
+      if (normalizedSelfies.length === 0) {
+        throw new Error("No selfies to upload");
+      }
+      if (normalizedSelfies.length > MAX_FILES) {
+        throw new Error(`Maximum ${MAX_FILES} selfies allowed`);
+      }
+
+      let normalizedFood: File | null = null;
+      if (foodPhoto) {
+        normalizedFood = foodPhoto instanceof File ? foodPhoto : new File([foodPhoto], "food.jpg", { type: (foodPhoto as any)?.type || "image/jpeg" });
+      }
+
+      for (const f of normalizedSelfies) {
+        if (!f.type.startsWith("image/")) throw new Error(`${f.name} is not an image`);
+        if (f.size > MAX_BYTES_PER_FILE) throw new Error(`${f.name} exceeds ${MAX_BYTES_PER_FILE} bytes`);
+      }
+      if (normalizedFood) {
+        if (!normalizedFood.type.startsWith("image/")) throw new Error("Food photo is not an image");
+        if (normalizedFood.size > MAX_BYTES_PER_FILE) throw new Error("Food photo is too large");
+      }
+
+      // Build FormData
+      const fd = new FormData();
+      fd.append("action", mode);
+      if (selectedItemId) fd.append("selectedItemId", selectedItemId);
+      normalizedSelfies.forEach((f) => fd.append("selfies", f, f.name));
+      if (normalizedFood) fd.append("food", normalizedFood, normalizedFood.name);
+
+      // Get auth token if available
+      let token: string | null = null;
+      if (typeof getAuthToken === "function") {
+        try {
+          token = await getAuthToken();
+        } catch {
+          token = null;
+        }
+      }
+
+      // Send with XHR for upload progress
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "https://api.example.com/fridge/upload", true);
+
+        if (token) {
+          xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        }
+        // If you rely on cookie auth and cross-origin, enable:
+        // xhr.withCredentials = true;
+
         xhr.upload.onprogress = (e) => {
           if (!e.lengthComputable) return;
           setProgress(Math.round((e.loaded / e.total) * 100));
         };
-        xhr.onreadystatechange = () => {
-          if (xhr.readyState !== XMLHttpRequest.DONE) return;
-          if (xhr.status >= 200 && xhr.status < 300) resolve();
-          else reject(new Error(`Upload failed ${xhr.status}`));
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) return resolve();
+          try {
+            const json = JSON.parse(xhr.responseText || "{}");
+            return reject(new Error(json.detail || json.message || `Upload failed ${xhr.status}`));
+          } catch {
+            return reject(new Error(`Upload failed ${xhr.status}`));
+          }
         };
-        xhr.onerror = () => reject(new Error("Network error"));
+
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.onabort = () => reject(new Error("Upload aborted"));
+
+        // Do not set Content-Type; browser sets multipart boundary
         xhr.send(fd);
       });
 
+      setProgress(100);
       setMessage("Upload succeeded");
       setStage("done");
     } catch (err: unknown) {
-      let msg = "Upload error";
-      if (err instanceof Error) {
-        msg = err.message;
-      } else if (typeof err === "string") {
-        msg = err;
-      }
+      const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Upload error";
       setMessage(msg);
       setStage("review");
+      setProgress(0);
     }
   }
+
 
   return (
     <main className={styles.shell} role="main">
@@ -313,7 +370,7 @@ export default function Page() {
       )}
 
       <footer className={styles.footer}>
-        <small>Pramith Made This Replace</small>
+        <small>BLAH BLAH BLAH PRAMITH NEEDS TO ADD A FOOTER HERE OR SOMETHING</small>
       </footer>
     </main>
   );

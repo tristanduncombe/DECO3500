@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import styles from "../page.module.css";
 
 type Props = {
   shots?: number; // default 1
@@ -104,7 +105,7 @@ export default function CameraCapture({
     <div style={{ display: "grid", gap: 8 }}>
       <div style={{ fontWeight: 700 }}>{label}</div>
       {error && <div style={{ color: "crimson" }}>{error}</div>}
-      <div style={{ position: "relative", width: 360, height: 270, background: "#000" }}>
+      <div style={{ position: "relative", width: "100%", height: "100%", background: "#000" }}>
         <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         {countdown !== null && (
           <div style={{
@@ -121,11 +122,29 @@ export default function CameraCapture({
           </div>
         )}
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={startCountdown} style={{ padding: "8px 12px" }}>Start</button>
-        <button onClick={handleCancel} style={{ padding: "8px 12px" }}>Cancel</button>
+      <div className={styles.btnInlineGroup}>
+        <button
+          type="button"
+          className={`${styles.primary} ${styles.inlineBtn}`}
+          onClick={startCountdown}
+          aria-label="Start countdown"
+        >
+          Start
+        </button>
+
+        <button
+          type="button"
+          className={`${styles.secondary} ${styles.inlineBtn}`}
+          onClick={handleCancel}
+          aria-label="Cancel capture"
+        >
+          Cancel
+        </button>
       </div>
-      <div><small>Captured {captured.length} of {shots}</small></div>
+
+      <div>
+        <small className={styles.small}>Captured {captured.length} of {shots}</small>
+      </div>
     </div>
   );
 }

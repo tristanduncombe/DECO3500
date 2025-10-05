@@ -10,27 +10,28 @@
 }
 
 /* Shell */
-.shell{
-  min-height:100vh;
-  padding:18px;
-  box-sizing:border-box;
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-  align-items:center;
-  background:linear-gradient(180deg,var(--bg),#f3f8fb);
-  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
-  color:#0f172a;
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  justify-content: center; /* center vertically */
+  padding: 18px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, var(--bg), #f3f8fb);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica", Arial;
+  color: #0f172a;
 }
 
 /* Header */
-.header{
-  width:100%;
-  max-width:var(--maxwidth);
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:12px;
+.header {
+  width: 92%;
+  max-width: 420px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 .brand{
@@ -44,13 +45,13 @@
 }
 
 /* Action buttons row */
-.actions{
-  width:100%;
-  max-width:var(--maxwidth);
-  display:flex;
-  gap:12px;
-  align-items:center;
-  justify-content:space-between;
+.actions {
+  width: 92%;
+  max-width: 420px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
 }
 
 .bigBtn{
@@ -80,17 +81,18 @@
 }
 
 /* Panel card */
-.panel{
-  width:100%;
-  max-width:var(--maxwidth);
-  background:var(--card);
-  border-radius:var(--radius);
-  padding:12px;
-  box-shadow:var(--shadow);
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  box-sizing:border-box;
+.panel {
+  width: 92%;
+  max-width: 420px; /* slightly smaller than --maxwidth for phone comfort */
+  margin: 0 auto; /* center horizontally if parent allows extra space */
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
 }
 
 /* Titles */
@@ -112,6 +114,12 @@
   grid-template-columns:repeat(3,1fr);
   gap:10px;
   margin-top:8px;
+}
+
+.selectionGrid,
+.previewGrid {
+  width: 100%;
+  margin: 0 auto;
 }
 
 .selectCard{
@@ -231,11 +239,11 @@
 }
 
 /* Footer row for actions */
-.footerRow{
-  display:flex;
-  gap:10px;
-  justify-content:flex-end;
-  margin-top:8px;
+.footerRow {
+  display: flex;
+  gap: 10px;
+  justify-content: center; /* center the buttons */
+  width: 100%;
 }
 
 .primary{
@@ -305,20 +313,54 @@
   text-align:left;
 }
 
-.footer{
-  width:100%;
-  max-width:var(--maxwidth);
-  color:var(--muted);
-  font-size:12px;
-  text-align:center;
-  padding-bottom:8px;
+.footer {
+  width: 92%;
+  max-width: 420px;
+  text-align: center;
+  padding-bottom: 8px;
 }
 
+/* container for inline buttons that should fill the panel width */
+.btnInlineGroup {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  justify-content: stretch;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* make each button expand equally to take full width (two buttons = 50% each minus gap) */
+.inlineBtn {
+  flex: 1 1 0;
+  min-width: 0;            /* prevents overflow on narrow screens */
+  padding: 12px 10px;
+  font-size: 15px;
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+
+/* optional: ensure primary/secondary still have distinct visuals */
+.primary.inlineBtn { /* preserves existing primary look when combined */ }
+.secondary.inlineBtn { /* preserves existing secondary look when combined */ }
+
+/* small text style for the captured counter (module-safe) */
+.small {
+  color: var(--muted);
+  font-size: 13px;
+  display: block;
+  text-align: center;
+  margin-top: 8px;
+}
+
+
+
+
 /* Responsive tweak for narrow portrait (phones or compact tablets) */
-@media (max-width:520px) {
+@media (max-width: 420px) {
+  .panel { max-width: 380px; padding: 10px; }
+  .header, .actions, .footer { width: 95%; max-width: 380px; }
+  .bigBtn { min-width: 0; width: 100%; }
   .selectionGrid { grid-template-columns: repeat(2, 1fr); }
   .previewGrid { grid-template-columns: 1fr; }
-  .bigBtn { font-size:16px; padding:14px; }
-  .foodLarge { height:120px; }
-  .selectThumb { height:64px; }
 }
