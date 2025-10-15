@@ -40,8 +40,7 @@ app.add_middleware(
 
 @lru_cache
 def get_database_url() -> str:
-    # return os.getenv("DATABASE_URL", "sqlite:///./inventory.db")
-    return "postgresql+psycopg://postgres:postgres@localhost:5432/deco"
+    return os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5432/deco")
 
 DATABASE_URL = get_database_url()
 engine = None
