@@ -12,7 +12,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates build-essential \
  && rm -rf /var/lib/apt/lists/* \
- && curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --yes
+ && curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Copy project metadata first for better layer caching
 COPY pyproject.toml uv.lock* ./
@@ -26,4 +26,4 @@ COPY . .
 EXPOSE 8000
 
 # Run using uv-managed environment
-CMD ["uv", "run", "fastapi", "run", "main.py", "--port", "8000"]
+CMD ["uv", "run", "fastapi", "run", "main.py", "--host", "0.0.0.0", "--port", "8000"]
