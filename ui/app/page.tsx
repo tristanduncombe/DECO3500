@@ -104,7 +104,7 @@ export default function Page() {
         setStage("review");
       };
       xhr.send(fd);
-    } catch (err: any) {
+    } catch (err: {message: string}) {
       setMessage(err.message || "Upload error");
       setStage("review");
       setProgress(0);
@@ -158,7 +158,7 @@ export default function Page() {
         setStage("review");
       };
       xhr.send(fd);
-    } catch (err: any) {
+    } catch (err: {message: "string"}) {
       setMessage(err.message || "Upload error");
       setStage("review");
       setProgress(0);

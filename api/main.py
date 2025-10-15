@@ -1,5 +1,6 @@
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from src.password import build_fingerprint, compare_fingerprints, extract_body_and_hand_positions
 from sqlmodel import Field, SQLModel, Session, create_engine
 from sqlalchemy.exc import OperationalError
@@ -17,6 +18,21 @@ import requests
 UNLOCK_THRESHOLD = 0.8
 
 app = FastAPI()
+
+# CORS setup: set CORS_ORIGINS as comma-separated list in env or use '*' to allow all
+_cors_origins = os.getenv('CORS_ORIGINS', '*')
+if _cors_origins.strip() == '*':
+    origins = ['*']
+else:
+    origins = [o.strip() for o in _cors_origins.split(',') if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @lru_cache
 def get_database_url() -> str:
