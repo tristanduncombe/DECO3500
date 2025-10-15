@@ -1,32 +1,29 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim AS base
+FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=off \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100
+    UV_LINK_MODE=copy \
+    PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 
-# Install build deps (if any needed for future extensions)
+# Install uv and build deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    curl ca-certificates build-essential \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --yes
 
 # Copy project metadata first for better layer caching
 COPY pyproject.toml uv.lock* ./
 
-# Use uv (fast Python package installer) if lock present; fallback to pip
-RUN pip install --upgrade pip
-# If uv is required specifically, you could: pip install uv
-# Install deps (FastAPI + SQLModel)
-RUN pip install fastapi fastapi-cli sqlmodel uvicorn[standard] psycopg[binary]
+# Sync dependencies with uv (use lockfile if present)
+RUN if [ -f uv.lock ]; then uv sync --frozen --no-dev; else uv sync --no-dev; fi
 
 # Copy application code
 COPY . .
 
 EXPOSE 8000
 
-# Run with reload disabled (prod). For dev: add --reload and mount volume in compose override
-CMD ["fastapi", "run", "main.py", "--port", "8000"]
+# Run using uv-managed environment
+CMD ["uv", "run", "fastapi", "run", "main.py", "--port", "8000"]
