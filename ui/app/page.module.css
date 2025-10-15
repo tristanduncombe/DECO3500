@@ -109,6 +109,50 @@
 }
 
 /* Selection grid */
+.inventoryPanel{
+  width:100%;
+  max-width:var(--maxwidth);
+  background:var(--card);
+  border-radius:var(--radius);
+  padding:20px;
+  box-shadow:var(--shadow);
+  box-sizing:border-box;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.inventoryHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.slotCount{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:48px;
+  padding:6px 12px;
+  border-radius:999px;
+  font-weight:700;
+  font-size:14px;
+  color:#0f172a;
+  background:#e5f4fb;
+}
+
+.inventoryOverlay{
+  width:100%;
+  padding:32px 20px;
+  border-radius:14px;
+  background:#fef3c7;
+  color:#92400e;
+  font-weight:600;
+  text-align:center;
+  box-shadow:inset 0 0 0 1px rgba(250, 204, 21, 0.35);
+}
+
 .selectionGrid{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -145,12 +189,31 @@
   box-shadow:none;
 }
 
+.selected{
+  border-color:var(--accent);
+  box-shadow:0 10px 28px rgba(6,182,212,0.22);
+}
+
 .selectThumb{
   width:100%;
   height:120px;
   object-fit:cover;
   border-radius:12px;
   border:1px solid #eef6fa;
+}
+
+.selectLabel{
+  font-weight:700;
+  font-size:15px;
+  text-align:center;
+  color:#0f172a;
+}
+
+.emptySlot{
+  border-style:dashed;
+  background:#f8fbfd;
+  color:var(--muted);
+  justify-content:center;
 }
 
 .selfieThumb{
@@ -355,7 +418,7 @@
 
 /* Responsive tweak for narrow portrait (phones or compact tablets) */
 @media (max-width: 420px) {
-  .panel { max-width: 380px; padding: 10px; }
+  .panel, .inventoryPanel { max-width: 380px; padding: 12px; }
   .header, .actions, .footer { width: 95%; max-width: 380px; }
   .bigBtn { min-width: 0; width: 100%; }
   .selectionGrid { grid-template-columns: repeat(2, 1fr); }

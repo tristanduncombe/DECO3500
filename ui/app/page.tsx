@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import CameraCapture from "./components/CameraCapture";
 import styles from "./page.module.css";
 import { getAuthToken } from "./utils/useAuth";
+import { Refrigerator, Sword } from "lucide-react";
 
 type Stage = "idle" | "select" | "selfie" | "food" | "review" | "uploading" | "done";
 
@@ -197,11 +198,12 @@ export default function Page() {
   const isSelectionMode = stage === "select";
   const visibleItems = foodItems.slice(0, MAX_SLOTS);
   const emptySlots = Math.max(0, MAX_SLOTS - visibleItems.length);
+  const shouldHideInventory = stage !== "idle" && stage !== "select";
 
   return (
     <main className={styles.shell} role="main">
       <header className={styles.header}>
-        <div className={styles.brand}>Smart Fridge</div>
+        <div className={styles.brand + " flex items-center"}><Refrigerator/>Fridge or Foe<Sword /></div>
         <div className={styles.modeHint}>
           {stage === "idle" ? "Choose an action to begin" : `Mode: ${mode?.toUpperCase() ?? "--"}`}
         </div>
@@ -234,8 +236,12 @@ export default function Page() {
           </span>
         </div>
         {inventoryError && <div className={styles.message}>{inventoryError}</div>}
-        {stage === "uploading" ? (
-          <div className={styles.uploadingNotice}>Fridge view is hidden while uploads are processing…</div>
+        {shouldHideInventory ? (
+          <div className={styles.inventoryOverlay}>
+            {stage === "uploading"
+              ? "Fridge view is hidden while uploads are processing…"
+              : "Finish the current action to view inside the fridge again."}
+          </div>
         ) : (
           <div className={styles.selectionGrid} aria-disabled={!isSelectionMode} data-stage={stage}>
             {visibleItems.map((item) => {
@@ -425,7 +431,7 @@ export default function Page() {
       )}
 
       <footer className={styles.footer}>
-        <small>© {new Date().getFullYear()} Smart Fridge Team</small>
+        <small>© {new Date().getFullYear()} Fridge or Foe Team</small>
       </footer>
     </main>
   );
