@@ -26,4 +26,4 @@ COPY . .
 EXPOSE 8000
 
 # Run using uv-managed environment
-CMD ["fastapi", "run", "main.py", "--port", "8000"]
+CMD ["uv", "run", "fastapi", "run", "main.py", "--port", "8000"]
