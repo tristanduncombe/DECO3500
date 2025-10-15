@@ -7,6 +7,7 @@ import time
 from fastapi.encoders import jsonable_encoder
 import shutil
 import os
+import base64
 from functools import lru_cache
 from sqlalchemy import text, Column, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -42,7 +43,8 @@ def init_engine_with_retry(max_attempts: int = 20, delay: float = 1.5):
 
 init_engine_with_retry()
 
-IMAGES_DIR = "images"
+BASE_DIR = os.path.dirname(__file__)
+IMAGES_DIR = os.path.join(BASE_DIR, "images")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
 class InventoryItem(SQLModel):
@@ -111,22 +113,52 @@ def create_item(
         session.add(db_item)
         session.commit()
         session.refresh(db_item)
+    # persist password filenames on disk and save filenames into the DB record
+    filenames = [os.path.basename(pwd1), os.path.basename(pwd2), os.path.basename(pwd3)]
+    try:
+        with Session(engine) as session:
+            obj = session.get(InventoryItem, db_item.id)
+            if isinstance(obj.password_image, dict):
+                obj.password_image['filenames'] = filenames
+            else:
+                obj.password_image = {'filenames': filenames}
+            session.add(obj)
+            session.commit()
+            session.refresh(obj)
+            db_item = obj
+    except Exception:
+        pass
 
-    # remove raw password images for privacy
+    # embed person image bytes and password images as data URLs in the returned payload
+    out = jsonable_encoder(db_item)
     try:
-        os.remove(pwd1)
+        imgpath = os.path.join(IMAGES_DIR, db_item.person_image) if db_item.person_image else None
+        if imgpath and os.path.exists(imgpath):
+            ext = os.path.splitext(imgpath)[1].lstrip('.') or 'jpeg'
+            with open(imgpath, 'rb') as f:
+                b = f.read()
+            out['person_image'] = f"data:image/{ext};base64,{base64.b64encode(b).decode('ascii') }"
     except Exception:
-        pass
+        out['person_image'] = db_item.person_image
+
     try:
-        os.remove(pwd2)
-    except Exception:
-        pass
-    try:
-        os.remove(pwd3)
+        pfiles = db_item.password_image.get('filenames') if isinstance(db_item.password_image, dict) else None
+        if pfiles:
+            pw_urls = []
+            for fn in pfiles:
+                ppath = os.path.join(IMAGES_DIR, fn)
+                if os.path.exists(ppath):
+                    ext = os.path.splitext(ppath)[1].lstrip('.') or 'jpeg'
+                    with open(ppath, 'rb') as pf:
+                        pb = pf.read()
+                    pw_urls.append(f"data:image/{ext};base64,{base64.b64encode(pb).decode('ascii') }")
+                else:
+                    pw_urls.append(None)
+            out['password_images'] = pw_urls
     except Exception:
         pass
 
-    return jsonable_encoder(db_item)
+    return out
 
 @app.get("/inventory/items/{item_id}", response_model=InventoryItem)
 def get_item(item_id: int):
@@ -134,7 +166,18 @@ def get_item(item_id: int):
         item = session.get(InventoryItem, item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
-        return jsonable_encoder(item)
+        out = jsonable_encoder(item)
+        try:
+            imgpath = os.path.join(IMAGES_DIR, item.person_image) if item.person_image else None
+            if imgpath and os.path.exists(imgpath):
+                ext = os.path.splitext(imgpath)[1].lstrip('.') or 'jpeg'
+                with open(imgpath, 'rb') as f:
+                    b = f.read()
+                out['person_image'] = f"data:image/{ext};base64,{base64.b64encode(b).decode('ascii') }"
+        except Exception:
+            out['person_image'] = item.person_image
+
+        return out
 
 
 @app.get("/inventory/items")
@@ -155,6 +198,37 @@ def list_items():
                 m = dict(r)
             except Exception:
                 m = {str(i): v for i, v in enumerate(r)}
+        # if there's a person_image filename, try to embed the image bytes as a data URL
+        try:
+            if m.get('person_image'):
+                imgpath = os.path.join(IMAGES_DIR, m.get('person_image'))
+                if os.path.exists(imgpath):
+                    ext = os.path.splitext(imgpath)[1].lstrip('.') or 'jpeg'
+                    with open(imgpath, 'rb') as f:
+                        b = f.read()
+                    m['person_image'] = f"data:image/{ext};base64,{base64.b64encode(b).decode('ascii') }"
+        except Exception:
+            # leave whatever was in the row if embedding fails
+            pass
+
+        # embed password images list if filenames saved in the password_image column
+        try:
+            pw = m.get('password_image')
+            if isinstance(pw, dict) and pw.get('filenames'):
+                pw_urls = []
+                for fn in pw.get('filenames'):
+                    ppath = os.path.join(IMAGES_DIR, fn)
+                    if os.path.exists(ppath):
+                        ext = os.path.splitext(ppath)[1].lstrip('.') or 'jpeg'
+                        with open(ppath, 'rb') as f:
+                            pb = f.read()
+                        pw_urls.append(f"data:image/{ext};base64,{base64.b64encode(pb).decode('ascii') }")
+                    else:
+                        pw_urls.append(None)
+                m['password_images'] = pw_urls
+        except Exception:
+            pass
+
         out.append(m)
 
     return jsonable_encoder(out)
@@ -206,20 +280,51 @@ def create_test_item():
         session.commit()
         session.refresh(db_item)
 
+    # keep password copies on disk and record their filenames in the DB
+    filenames = [os.path.basename(password_path1), os.path.basename(password_path2), os.path.basename(password_path3)]
     try:
-        os.remove(password_path1)
-    except Exception:
-        pass
-    try:
-        os.remove(password_path2)
-    except Exception:
-        pass
-    try:
-        os.remove(password_path3)
+        with Session(engine) as session:
+            obj = session.get(InventoryItem, db_item.id)
+            if isinstance(obj.password_image, dict):
+                obj.password_image['filenames'] = filenames
+            else:
+                obj.password_image = {'filenames': filenames}
+            session.add(obj)
+            session.commit()
+            session.refresh(obj)
+            db_item = obj
     except Exception:
         pass
 
-    return jsonable_encoder(db_item)
+    out = jsonable_encoder(db_item)
+    try:
+        imgpath = os.path.join(IMAGES_DIR, db_item.person_image) if db_item.person_image else None
+        if imgpath and os.path.exists(imgpath):
+            ext = os.path.splitext(imgpath)[1].lstrip('.') or 'jpeg'
+            with open(imgpath, 'rb') as f:
+                b = f.read()
+            out['person_image'] = f"data:image/{ext};base64,{base64.b64encode(b).decode('ascii') }"
+    except Exception:
+        out['person_image'] = db_item.person_image
+
+    try:
+        pfiles = db_item.password_image.get('filenames') if isinstance(db_item.password_image, dict) else None
+        if pfiles:
+            pw_urls = []
+            for fn in pfiles:
+                ppath = os.path.join(IMAGES_DIR, fn)
+                if os.path.exists(ppath):
+                    ext = os.path.splitext(ppath)[1].lstrip('.') or 'jpeg'
+                    with open(ppath, 'rb') as pf:
+                        pb = pf.read()
+                    pw_urls.append(f"data:image/{ext};base64,{base64.b64encode(pb).decode('ascii') }")
+                else:
+                    pw_urls.append(None)
+            out['password_images'] = pw_urls
+    except Exception:
+        pass
+
+    return out
 
 
 @app.post("/inventory/items/{item_id}/unlock")
