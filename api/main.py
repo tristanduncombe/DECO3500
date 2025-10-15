@@ -23,12 +23,20 @@ app = FastAPI()
 logger = logging.getLogger("api")
 logging.basicConfig(level=logging.INFO)
 
-# CORS setup: set CORS_ORIGINS as comma-separated list in env or use '*' to allow all
-_cors_origins = os.getenv('CORS_ORIGINS', '*')
-if _cors_origins.strip() == '*':
-    origins = ['*']
+# CORS setup: restrict to specific origins by default; override via CORS_ORIGINS env (comma separated)
+DEFAULT_CORS_ORIGINS = [
+    "http://103.249.239.235",
+    "https://103.249.239.235",
+]
+
+_cors_origins = os.getenv("CORS_ORIGINS")
+if _cors_origins and _cors_origins.strip():
+    if _cors_origins.strip() == "*":
+        origins = ["*"]
+    else:
+        origins = [o.strip() for o in _cors_origins.split(',') if o.strip()]
 else:
-    origins = [o.strip() for o in _cors_origins.split(',') if o.strip()]
+    origins = DEFAULT_CORS_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,

@@ -11,6 +11,7 @@ services:
       # Expose base URL for other services if needed
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/deco
+      - CORS_ORIGINS=http://103.249.239.235,https://103.249.239.235
     volumes:
       # Persist uploaded images between container restarts
       - api_images:/app/images
