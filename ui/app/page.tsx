@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+/* eslint-disable @next/next/no-img-element */
+
+import React, { useCallback, useEffect, useState } from "react";
 import CameraCapture from "./components/CameraCapture";
 import styles from "./page.module.css";
 import { getAuthToken } from "./utils/useAuth";
@@ -9,13 +11,13 @@ type Stage = "idle" | "select" | "selfie" | "food" | "review" | "uploading" | "d
 
 type FoodItem = {
   id: string;
-  label: string;
-  thumbDataUrl: string;
-  selfieDataUrl?: string;
+  label?: string | null;
+  thumbDataUrl?: string | null;
+  selfieDataUrl?: string | null;
 };
 
 const MAX_FILES = 4;
-const MAX_BYTES_PER_FILE = 10 * 1024 * 1024;
+const MAX_SLOTS = 9;
 
 export default function Page() {
   const [mode, setMode] = useState<"put" | "take" | null>(null);
@@ -26,20 +28,32 @@ export default function Page() {
   const [message, setMessage] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
+  const [isFetching, setIsFetching] = useState<boolean>(false);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+
+  const fetchFoodItems = useCallback(async () => {
+    setIsFetching(true);
+    try {
+      const res = await fetch("http://localhost:8000/inventory/items");
+      if (!res.ok) {
+        throw new Error(`Inventory request failed (${res.status})`);
+      }
+      const data = await res.json();
+      const normalized: FoodItem[] = Array.isArray(data) ? data.slice(0, MAX_SLOTS) : [];
+      setFoodItems(normalized);
+      setInventoryError(null);
+    } catch (err) {
+      console.error("Failed to fetch food items", err);
+      setFoodItems([]);
+      setInventoryError("Unable to load fridge contents right now.");
+    } finally {
+      setIsFetching(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchFoodItems() {
-      try {
-        const res = await fetch("http://localhost:8000/inventory/items");
-        const data = await res.json();
-        setFoodItems(data || []);
-      } catch (err) {
-        console.error("Failed to fetch food items", err);
-      }
-    }
-
-    fetchFoodItems();
-  }, []);
+    void fetchFoodItems();
+  }, [fetchFoodItems]);
 
   function start(action: "put" | "take") {
     setMode(action);
@@ -49,6 +63,7 @@ export default function Page() {
     setMessage(null);
     setSelectedItemId(null);
     setStage(action === "take" ? "select" : "selfie");
+    void fetchFoodItems();
   }
 
   function reset() {
@@ -59,6 +74,7 @@ export default function Page() {
     setProgress(0);
     setMessage(null);
     setSelectedItemId(null);
+    void fetchFoodItems();
   }
 
   async function submitPut(): Promise<void> {
@@ -94,6 +110,11 @@ export default function Page() {
         if (xhr.status >= 200 && xhr.status < 300) {
           setMessage("Item successfully added to fridge");
           setStage("done");
+          if (typeof window !== "undefined") {
+            setTimeout(() => {
+              window.location.reload();
+            }, 750);
+          }
         } else {
           setMessage(`Upload failed: ${xhr.status}`);
           setStage("review");
@@ -104,8 +125,9 @@ export default function Page() {
         setStage("review");
       };
       xhr.send(fd);
-    } catch (err: {message: string}) {
-      setMessage(err.message || "Upload error");
+    } catch (err) {
+      const error = err as Error;
+      setMessage(error.message || "Upload error");
       setStage("review");
       setProgress(0);
     }
@@ -144,6 +166,12 @@ export default function Page() {
           if (result.success) {
             setMessage("Unlock successful! You may take the item.");
             setStage("done");
+            setSelectedItemId(null);
+            if (typeof window !== "undefined") {
+              setTimeout(() => {
+                window.location.reload();
+              }, 750);
+            }
           } else {
             setMessage(`Unlock failed. Scores: ${result.scores.join(", ")}. Try again.`);
             setStage("review");
@@ -158,62 +186,108 @@ export default function Page() {
         setStage("review");
       };
       xhr.send(fd);
-    } catch (err: {message: "string"}) {
-      setMessage(err.message || "Upload error");
+    } catch (err) {
+      const error = err as Error;
+      setMessage(error.message || "Upload error");
       setStage("review");
       setProgress(0);
     }
   }
 
+  const isSelectionMode = stage === "select";
+  const visibleItems = foodItems.slice(0, MAX_SLOTS);
+  const emptySlots = Math.max(0, MAX_SLOTS - visibleItems.length);
+
   return (
     <main className={styles.shell} role="main">
       <header className={styles.header}>
         <div className={styles.brand}>Smart Fridge</div>
-        <div className={styles.modeHint}>{stage === "idle" ? "Tap to begin" : `Mode: ${mode?.toUpperCase()}`}</div>
+        <div className={styles.modeHint}>
+          {stage === "idle" ? "Choose an action to begin" : `Mode: ${mode?.toUpperCase() ?? "--"}`}
+        </div>
       </header>
 
       <section className={styles.actions}>
-        <button className={`${styles.bigBtn} ${styles.put}`} onClick={() => start("put")} disabled={stage !== "idle"}>
+        <button
+          className={`${styles.bigBtn} ${styles.put}`}
+          onClick={() => start("put")}
+          disabled={stage !== "idle"}
+          type="button"
+        >
           Put In
         </button>
-        <button className={`${styles.bigBtn} ${styles.take}`} onClick={() => start("take")} disabled={stage !== "idle"}>
+        <button
+          className={`${styles.bigBtn} ${styles.take}`}
+          onClick={() => start("take")}
+          disabled={stage !== "idle"}
+          type="button"
+        >
           Take Out
         </button>
       </section>
 
-      {stage === "select" && (
-        <section className={styles.panel}>
-          <h2 className={styles.title}>Select Item to Remove</h2>
-          <p className={styles.note}>Choose one of the known items below.</p>
-          <div className={styles.selectionGrid}>
-            {foodItems.map((item) => {
+      <section className={styles.inventoryPanel} aria-live="polite">
+        <div className={styles.inventoryHeader}>
+          <h2 className={styles.title}>Inside the fridge</h2>
+          <span className={styles.slotCount}>
+            {visibleItems.length}/{MAX_SLOTS}
+          </span>
+        </div>
+        {inventoryError && <div className={styles.message}>{inventoryError}</div>}
+        {stage === "uploading" ? (
+          <div className={styles.uploadingNotice}>Fridge view is hidden while uploads are processing…</div>
+        ) : (
+          <div className={styles.selectionGrid} aria-disabled={!isSelectionMode} data-stage={stage}>
+            {visibleItems.map((item) => {
               const selected = selectedItemId === item.id;
+              const label = item.label || "Unnamed item";
+              const thumbSrc = item.thumbDataUrl || "/question-mark.png";
+              const selfieSrc = item.selfieDataUrl || undefined;
               return (
                 <button
+                  type="button"
                   key={item.id}
                   className={`${styles.selectCard} ${selected ? styles.selected : ""}`}
-                  onClick={() => setSelectedItemId(item.id)}
-                  aria-pressed={selected}
+                  onClick={() => {
+                    if (!isSelectionMode) return;
+                    setSelectedItemId(item.id);
+                    setMessage(null);
+                  }}
+                  disabled={!isSelectionMode}
+                  aria-pressed={isSelectionMode ? selected : undefined}
                 >
                   <img
-                    src={item.thumbDataUrl}
-                    alt={item.label}
+                    src={thumbSrc}
+                    alt={label}
                     className={styles.selectThumb}
                     onError={(e) => (e.currentTarget.src = "/question-mark.png")}
                   />
-                  {item.selfieDataUrl && (
+                  {selfieSrc && (
                     <img
-                      src={item.selfieDataUrl}
+                      src={selfieSrc}
                       alt="person"
                       className={styles.selfieThumb}
                       onError={(e) => (e.currentTarget.src = "/question-mark.png")}
                     />
                   )}
-                  <div className={styles.selectLabel}>{item.label}</div>
+                  <div className={styles.selectLabel}>{label}</div>
                 </button>
               );
             })}
+            {Array.from({ length: emptySlots }).map((_, idx) => (
+              <div key={`empty-${idx}`} className={`${styles.selectCard} ${styles.emptySlot}`}>
+                <div className={styles.empty}>Empty slot</div>
+              </div>
+            ))}
           </div>
+        )}
+        {isFetching && <span className={styles.small}>Refreshing inventory…</span>}
+      </section>
+
+      {stage === "select" && (
+        <section className={styles.panel}>
+          <h2 className={styles.title}>Select Item to Remove</h2>
+          <p className={styles.note}>Tap a slot above to highlight the item you want to unlock.</p>
           <div className={styles.footerRow}>
             <button
               className={styles.primary}
@@ -225,10 +299,11 @@ export default function Page() {
                 setMessage(null);
                 setStage("selfie");
               }}
+              type="button"
             >
               Continue
             </button>
-            <button className={styles.secondary} onClick={reset}>
+            <button className={styles.secondary} onClick={reset} type="button">
               Cancel
             </button>
           </div>
@@ -238,8 +313,8 @@ export default function Page() {
 
       {stage === "selfie" && (
         <section className={styles.panel}>
-          <h2 className={styles.title}>Selfies (up to 3)</h2>
-          <p className={styles.note}>Tap Start, then pose. Countdown before each shot.</p>
+          <h2 className={styles.title}>Selfies (3 shots)</h2>
+          <p className={styles.note}>Tap Start, then pose. There’s a countdown before each shot.</p>
           <CameraCapture
             shots={3}
             label="Selfie"
@@ -308,13 +383,10 @@ export default function Page() {
           </div>
 
           <div className={styles.footerRow}>
-            <button
-              className={styles.primary}
-              onClick={mode === "put" ? submitPut : submitTake}
-            >
+            <button className={styles.primary} onClick={mode === "put" ? submitPut : submitTake} type="button">
               Submit
             </button>
-            <button className={styles.secondary} onClick={reset}>
+            <button className={styles.secondary} onClick={reset} type="button">
               Cancel
             </button>
           </div>
@@ -333,7 +405,7 @@ export default function Page() {
             <div className={styles.progressText}>{progress}%</div>
           </div>
           <div className={styles.footerRow}>
-            <button className={styles.secondary} onClick={reset}>
+            <button className={styles.secondary} onClick={reset} type="button">
               Abort
             </button>
           </div>
@@ -345,7 +417,7 @@ export default function Page() {
           <h2 className={styles.title}>Done</h2>
           <div className={styles.message}>{message}</div>
           <div className={styles.footerRow}>
-            <button className={styles.primary} onClick={reset}>
+            <button className={styles.primary} onClick={reset} type="button">
               Back
             </button>
           </div>
@@ -353,7 +425,7 @@ export default function Page() {
       )}
 
       <footer className={styles.footer}>
-        <small>BLAH BLAH BLAH PRAMITH NEEDS TO ADD A FOOTER HERE OR SOMETHING</small>
+        <small>© {new Date().getFullYear()} Smart Fridge Team</small>
       </footer>
     </main>
   );

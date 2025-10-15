@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from src.password import build_fingerprint, compare_fingerprints, extract_body_and_hand_positions
 from sqlmodel import Field, SQLModel, Session, create_engine
@@ -14,10 +14,14 @@ from sqlalchemy import text, Column, String
 from sqlalchemy.dialects.postgresql import JSONB
 from uuid import uuid4
 import requests
+import logging
 
 UNLOCK_THRESHOLD = 0.8
 
 app = FastAPI()
+
+logger = logging.getLogger("api")
+logging.basicConfig(level=logging.INFO)
 
 # CORS setup: set CORS_ORIGINS as comma-separated list in env or use '*' to allow all
 _cors_origins = os.getenv('CORS_ORIGINS', '*')
@@ -63,6 +67,16 @@ BASE_DIR = os.path.dirname(__file__)
 IMAGES_DIR = os.path.join(BASE_DIR, "images")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
+
+def _remove_file_if_exists(path: Optional[str]) -> None:
+    if not path:
+        return
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        logger.warning("Failed to remove file %s", path, exc_info=True)
+
 class InventoryItem(SQLModel):
     id: Optional[int] = Field(default=None, primary_key=True)
     item: str
@@ -76,7 +90,7 @@ SQLModel.metadata.create_all(engine)
 
 @app.post("/inventory/items", response_model=InventoryItem)
 def create_item(
-    item: str,
+    item: str = Form(...),
     person_image: UploadFile = File(...),
     password_image_1: UploadFile = File(...),
     password_image_2: UploadFile = File(...),
@@ -91,22 +105,25 @@ def create_item(
     ):
         raise HTTPException(status_code=400, detail="Image filename missing")
 
-    # save files
-    person_path = os.path.join(IMAGES_DIR, person_image.filename)
-    with open(person_path, "wb") as f:
-        shutil.copyfileobj(person_image.file, f)
+    # save files using UUID filenames (preserve extension)
+    def _save_upload(upload: UploadFile) -> str:
+        ext = os.path.splitext(upload.filename or '')[1] or '.jpg'
+        fname = f"{uuid4().hex}{ext}"
+        path = os.path.join(IMAGES_DIR, fname)
+        with open(path, 'wb') as f:
+            shutil.copyfileobj(upload.file, f)
+        return fname
 
-    pwd1 = os.path.join(IMAGES_DIR, password_image_1.filename)
-    with open(pwd1, "wb") as f:
-        shutil.copyfileobj(password_image_1.file, f)
+    person_fname = _save_upload(person_image)
 
-    pwd2 = os.path.join(IMAGES_DIR, password_image_2.filename)
-    with open(pwd2, "wb") as f:
-        shutil.copyfileobj(password_image_2.file, f)
+    fn1 = _save_upload(password_image_1)
+    pwd1 = os.path.join(IMAGES_DIR, fn1)
 
-    pwd3 = os.path.join(IMAGES_DIR, password_image_3.filename)
-    with open(pwd3, "wb") as f:
-        shutil.copyfileobj(password_image_3.file, f)
+    fn2 = _save_upload(password_image_2)
+    pwd2 = os.path.join(IMAGES_DIR, fn2)
+
+    fn3 = _save_upload(password_image_3)
+    pwd3 = os.path.join(IMAGES_DIR, fn3)
 
     # extract positions and fingerprints for each password image
     pos1 = extract_body_and_hand_positions(pwd1)
@@ -117,9 +134,18 @@ def create_item(
     fp2 = build_fingerprint(pos2)
     fp3 = build_fingerprint(pos3)
 
+    # validate fingerprints: if extraction failed (empty fingerprint), reject the upload
+    if not fp1 or not fp2 or not fp3:
+        # log details for debugging
+        logger.warning("Fingerprint extraction failed for one or more password images: sizes=%s,%s,%s", len(fp1), len(fp2), len(fp3))
+        logger.debug("pos1=%s", pos1)
+        logger.debug("pos2=%s", pos2)
+        logger.debug("pos3=%s", pos3)
+        raise HTTPException(status_code=400, detail="Could not detect pose/hand landmarks in one or more password images")
+
     db_item = InventoryItem(
         item=item,
-        person_image=person_image.filename,
+        person_image=person_fname,
         password_image={
             "fingerprints": [fp1, fp2, fp3],
         },
@@ -205,7 +231,7 @@ def list_items():
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"DB read error: {e}")
 
-    out = []
+    items = []
     for r in rows:
         try:
             m = dict(r._mapping)
@@ -214,40 +240,55 @@ def list_items():
                 m = dict(r)
             except Exception:
                 m = {str(i): v for i, v in enumerate(r)}
-        # if there's a person_image filename, try to embed the image bytes as a data URL
-        try:
-            if m.get('person_image'):
-                imgpath = os.path.join(IMAGES_DIR, m.get('person_image'))
-                if os.path.exists(imgpath):
-                    ext = os.path.splitext(imgpath)[1].lstrip('.') or 'jpeg'
-                    with open(imgpath, 'rb') as f:
-                        b = f.read()
-                    m['person_image'] = f"data:image/{ext};base64,{base64.b64encode(b).decode('ascii') }"
-        except Exception:
-            # leave whatever was in the row if embedding fails
-            pass
 
-        # embed password images list if filenames saved in the password_image column
+        person_value = m.get('person_image')
+        person_data_url = None
+        try:
+            if isinstance(person_value, str) and person_value:
+                if person_value.startswith('data:'):
+                    person_data_url = person_value
+                else:
+                    imgpath = os.path.join(IMAGES_DIR, person_value)
+                    if os.path.exists(imgpath):
+                        ext = os.path.splitext(imgpath)[1].lstrip('.') or 'jpeg'
+                        with open(imgpath, 'rb') as f:
+                            b = f.read()
+                        person_data_url = f"data:image/{ext};base64,{base64.b64encode(b).decode('ascii') }"
+        except Exception:
+            person_data_url = person_value if isinstance(person_value, str) else None
+
+        password_urls = []
         try:
             pw = m.get('password_image')
-            if isinstance(pw, dict) and pw.get('filenames'):
-                pw_urls = []
-                for fn in pw.get('filenames'):
+            filenames = pw.get('filenames') if isinstance(pw, dict) else None
+            if filenames:
+                for fn in filenames:
+                    if not isinstance(fn, str) or not fn:
+                        password_urls.append(None)
+                        continue
                     ppath = os.path.join(IMAGES_DIR, fn)
                     if os.path.exists(ppath):
                         ext = os.path.splitext(ppath)[1].lstrip('.') or 'jpeg'
                         with open(ppath, 'rb') as f:
                             pb = f.read()
-                        pw_urls.append(f"data:image/{ext};base64,{base64.b64encode(pb).decode('ascii') }")
+                        password_urls.append(f"data:image/{ext};base64,{base64.b64encode(pb).decode('ascii') }")
                     else:
-                        pw_urls.append(None)
-                m['password_images'] = pw_urls
+                        password_urls.append(None)
         except Exception:
-            pass
+            password_urls = []
 
-        out.append(m)
+        selfie_data_url = next((url for url in password_urls if url), None)
+        item_id = m.get('id')
 
-    return jsonable_encoder(out)
+        items.append({
+            "id": str(item_id) if item_id is not None else None,
+            "label": m.get('item'),
+            "thumbDataUrl": person_data_url or "",
+            "selfieDataUrl": selfie_data_url,
+            "passwordImageUrls": password_urls or None,
+        })
+
+    return jsonable_encoder(items)
 
 
 @app.post("/inventory/items/test", response_model=InventoryItem)
@@ -268,12 +309,17 @@ def create_test_item():
 
     # use same file for person and create three password copies for test
     person_filename = fname
-    password_path1 = os.path.join(IMAGES_DIR, f"test_password_1{os.path.splitext(fname)[1]}")
-    password_path2 = os.path.join(IMAGES_DIR, f"test_password_2{os.path.splitext(fname)[1]}")
-    password_path3 = os.path.join(IMAGES_DIR, f"test_password_3{os.path.splitext(fname)[1]}")
-    shutil.copyfile(path, password_path1)
-    shutil.copyfile(path, password_path2)
-    shutil.copyfile(path, password_path3)
+    # copy to UUID filenames so test entries use the same naming scheme
+    def _copy_to_uuid(src_path: str) -> str:
+        ext = os.path.splitext(src_path)[1] or '.jpg'
+        fname = f"{uuid4().hex}{ext}"
+        dst = os.path.join(IMAGES_DIR, fname)
+        shutil.copyfile(src_path, dst)
+        return dst
+
+    password_path1 = _copy_to_uuid(path)
+    password_path2 = _copy_to_uuid(path)
+    password_path3 = _copy_to_uuid(path)
 
     pos1 = extract_body_and_hand_positions(password_path1)
     pos2 = extract_body_and_hand_positions(password_path2)
@@ -372,7 +418,7 @@ def unlock_item(
             if not item:
                 raise HTTPException(status_code=404, detail="Item not found")
 
-            stored = item.password_image
+            stored = item.password_image or {}
 
             if 'fingerprints' in stored and isinstance(stored['fingerprints'], list) and len(stored['fingerprints']) >= 3:
                 sp1, sp2, sp3 = stored['fingerprints'][:3]
@@ -390,12 +436,33 @@ def unlock_item(
             avg = float((s1 + s2 + s3) / 3.0)
             success = avg >= UNLOCK_THRESHOLD
 
-            return jsonable_encoder({
+            response_payload = {
                 "item_id": item_id,
                 "scores": [float(s1), float(s2), float(s3)],
                 "average": avg,
                 "success": bool(success),
-            })
+            }
+
+            if success:
+                person_filename = item.person_image
+                password_filenames = []
+                if isinstance(stored, dict):
+                    raw_filenames = stored.get('filenames') or []
+                    password_filenames = [fn for fn in raw_filenames if isinstance(fn, str)]
+
+                session.delete(item)
+                session.commit()
+
+                files_to_cleanup = []
+                if person_filename:
+                    files_to_cleanup.append(os.path.join(IMAGES_DIR, person_filename))
+                for fn in password_filenames:
+                    files_to_cleanup.append(os.path.join(IMAGES_DIR, fn))
+
+                for fpath in files_to_cleanup:
+                    _remove_file_if_exists(fpath)
+
+            return jsonable_encoder(response_payload)
     finally:
         try:
             os.remove(tmp1)
