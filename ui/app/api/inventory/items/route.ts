@@ -3,9 +3,10 @@ import { getBackendBase, pickForwardHeaders } from "@/app/api/_backend";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const url = `${getBackendBase()}/inventory/items`;
-  const res = await fetch(url, { next: { revalidate: 0 } });
+export async function GET(req: NextRequest) {
+  const url = `${getBackendBase(req)}/inventory/items`;
+  const headers = pickForwardHeaders(req);
+  const res = await fetch(url, { headers, next: { revalidate: 0 } });
   const body = await res.text();
   return new Response(body, {
     status: res.status,
@@ -14,7 +15,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const url = `${getBackendBase()}/inventory/items`;
+  const url = `${getBackendBase(req)}/inventory/items`;
   // Pass through multipart form-data as-is
   const headers = pickForwardHeaders(req);
   const init: RequestInit & { duplex?: "half" } = {

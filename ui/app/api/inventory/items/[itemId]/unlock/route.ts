@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest, { params }: { params: { itemId: string } }) {
   const itemId = params.itemId;
   if (!itemId) return new Response(JSON.stringify({ error: "itemId required" }), { status: 400 });
-  const url = `${getBackendBase()}/inventory/items/${encodeURIComponent(itemId)}/unlock`;
+  const url = `${getBackendBase(req)}/inventory/items/${encodeURIComponent(itemId)}/unlock`;
   const headers = pickForwardHeaders(req);
   const init: RequestInit & { duplex?: "half" } = {
     method: "POST",

@@ -1,7 +1,19 @@
 // Helper to resolve the FastAPI backend base URL for server-side route handlers
-export function getBackendBase(): string {
-  const fromEnv = process.env.API_PROXY_TARGET || process.env.NEXT_PUBLIC_API_BASE_URL;
-  return (fromEnv && fromEnv.trim()) || "http://localhost:8000";
+// Accepts the incoming Request to allow environment-aware resolution.
+export function getBackendBase(req?: Request): string {
+  const envProxy = process.env.API_PROXY_TARGET?.trim();
+  const envPublic = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+
+  // If running locally (host header is localhost/127.0.0.1) prefer localhost backend
+  const host = req?.headers?.get("host") || "";
+  const isLocalHost = /(^|:)localhost(:|$)|(^|:)127\.0\.0\.1(:|$)/i.test(host);
+  if (isLocalHost) {
+    // Use explicit override if provided, else default to local FastAPI
+    return envPublic || "http://localhost:8000";
+  }
+
+  // In Docker or deployed: prefer API_PROXY_TARGET if set, else fall back to public/base
+  return envProxy || envPublic || "http://localhost:8000";
 }
 
 // Only forward a safe subset of headers downstream
