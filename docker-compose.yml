@@ -11,7 +11,7 @@ services:
       # Expose base URL for other services if needed
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/deco
-      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://103.249.239.235:3000,https://103.249.239.235:3000,http://103.249.239.235,https://103.249.239.235
+      - CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000,http://103.249.239.235:3000,https://103.249.239.235:3000,http://103.249.239.235,https://103.249.239.235,https://fridge.tristanduncombe.com"
     volumes:
       # Persist uploaded images between container restarts
       - api_images:/app/images
@@ -25,6 +25,7 @@ services:
     environment:
       # Public URL for the browser to call the API
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - API_PROXY_TARGET=http://api:8000
       - NODE_ENV=production
     ports:
       - "3000:3000"
