@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getBackendBase, pickForwardHeaders } from "@/app/api/_backend";
+import { getBackendBase, getBackendBaseCandidates, pickForwardHeaders } from "@/app/api/_backend";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const url = `${getBackendBase(req)}/inventory/items`;
+  const bases = getBackendBaseCandidates(req);
+  const path = `/inventory/items`;
   // Pass through multipart form-data as-is
   const headers = pickForwardHeaders(req);
   const init: RequestInit & { duplex?: "half" } = {
@@ -24,11 +25,21 @@ export async function POST(req: NextRequest) {
     body: req.body as unknown as BodyInit,
     duplex: "half",
   };
-  const res = await fetch(url, init as RequestInit);
-  const body = await res.text();
-  // Preserve content-type for data URLs/json
-  return new Response(body, {
-    status: res.status,
-    headers: { "content-type": res.headers.get("content-type") || "application/json" },
-  });
+  let lastErr: unknown = undefined;
+  for (const base of bases) {
+    const url = `${base}${path}`;
+    try {
+      const res = await fetch(url, init as RequestInit);
+      const body = await res.text();
+      // Preserve content-type for data URLs/json
+      return new Response(body, {
+        status: res.status,
+        headers: { "content-type": res.headers.get("content-type") || "application/json" },
+      });
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  console.error("Failed to proxy items POST", lastErr);
+  return new Response(JSON.stringify({ error: "Upstream unavailable" }), { status: 502 });
 }

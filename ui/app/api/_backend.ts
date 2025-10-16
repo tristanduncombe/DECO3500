@@ -16,6 +16,26 @@ export function getBackendBase(req?: Request): string {
   return envProxy || envPublic || "http://localhost:8000";
 }
 
+// Provide ordered candidates to try in case the primary base is unreachable.
+export function getBackendBaseCandidates(req?: Request): string[] {
+  const envProxy = process.env.API_PROXY_TARGET?.trim();
+  const envPublic = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  const host = req?.headers?.get("host") || "";
+  const isLocalHost = /(^|:)localhost(:|$)|(^|:)127\.0\.0\.1(:|$)/i.test(host);
+
+  if (isLocalHost) {
+    // Try localhost first, then docker internal if provided
+    const primary = envPublic || "http://localhost:8000";
+    const secondary = envProxy || "http://api:8000";
+    return primary === secondary ? [primary] : [primary, secondary];
+  }
+
+  // In container or prod, try proxy target first, then fall back to localhost (for dev shells)
+  const primary = envProxy || envPublic || "http://localhost:8000";
+  const secondary = primary === "http://localhost:8000" ? undefined : "http://localhost:8000";
+  return secondary ? [primary, secondary] : [primary];
+}
+
 // Only forward a safe subset of headers downstream
 export function pickForwardHeaders(req: Request, extra: Record<string, string> = {}): Headers {
   const headers = new Headers();
