@@ -25,10 +25,7 @@ export function getBackendBaseCandidates(req?: Request): string[] {
 
   // If explicit proxy target is set (Docker/prod), try it first
   if (envProxy) {
-    const candidates = [envProxy];
-    if (envPublic && envPublic !== envProxy) candidates.push(envPublic);
-    if (!envPublic || envPublic !== "http://localhost:8000") candidates.push("http://localhost:8000");
-    return candidates;
+    return [envProxy];
   }
 
   // Otherwise, local-first
