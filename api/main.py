@@ -13,8 +13,8 @@ from functools import lru_cache
 from sqlalchemy import text, Column, String
 from sqlalchemy.dialects.postgresql import JSONB
 from uuid import uuid4
-import requests
 import logging
+import tempfile
 
 UNLOCK_THRESHOLD = 0.8
 
@@ -48,7 +48,7 @@ app.add_middleware(
 
 @lru_cache
 def get_database_url() -> str:
-    return os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5432/deco")
+    return os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5431/deco")
 
 DATABASE_URL = get_database_url()
 engine = None
@@ -123,14 +123,17 @@ def create_item(
 
     person_fname = _save_upload(person_image)
 
-    fn1 = _save_upload(password_image_1)
-    pwd1 = os.path.join(IMAGES_DIR, fn1)
+    # For password images, use temporary files (do not persist filenames)
+    def _save_temp_upload(upload: UploadFile) -> str:
+        ext = os.path.splitext(upload.filename or '')[1] or '.jpg'
+        tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False, dir=IMAGES_DIR)
+        with tmp as f:
+            shutil.copyfileobj(upload.file, f)
+        return tmp.name
 
-    fn2 = _save_upload(password_image_2)
-    pwd2 = os.path.join(IMAGES_DIR, fn2)
-
-    fn3 = _save_upload(password_image_3)
-    pwd3 = os.path.join(IMAGES_DIR, fn3)
+    pwd1 = _save_temp_upload(password_image_1)
+    pwd2 = _save_temp_upload(password_image_2)
+    pwd3 = _save_temp_upload(password_image_3)
 
     # extract positions and fingerprints for each password image
     pos1 = extract_body_and_hand_positions(pwd1)
@@ -162,19 +165,17 @@ def create_item(
         session.add(db_item)
         session.commit()
         session.refresh(db_item)
-    # persist password filenames on disk and save filenames into the DB record
-    filenames = [os.path.basename(pwd1), os.path.basename(pwd2), os.path.basename(pwd3)]
+    # cleanup temporary password images immediately (never persist)
     try:
-        with Session(engine) as session:
-            obj = session.get(InventoryItem, db_item.id)
-            if isinstance(obj.password_image, dict):
-                obj.password_image['filenames'] = filenames
-            else:
-                obj.password_image = {'filenames': filenames}
-            session.add(obj)
-            session.commit()
-            session.refresh(obj)
-            db_item = obj
+        os.remove(pwd1)
+    except Exception:
+        pass
+    try:
+        os.remove(pwd2)
+    except Exception:
+        pass
+    try:
+        os.remove(pwd3)
     except Exception:
         pass
 
@@ -190,22 +191,7 @@ def create_item(
     except Exception:
         out['person_image'] = db_item.person_image
 
-    try:
-        pfiles = db_item.password_image.get('filenames') if isinstance(db_item.password_image, dict) else None
-        if pfiles:
-            pw_urls = []
-            for fn in pfiles:
-                ppath = os.path.join(IMAGES_DIR, fn)
-                if os.path.exists(ppath):
-                    ext = os.path.splitext(ppath)[1].lstrip('.') or 'jpeg'
-                    with open(ppath, 'rb') as pf:
-                        pb = pf.read()
-                    pw_urls.append(f"data:image/{ext};base64,{base64.b64encode(pb).decode('ascii') }")
-                else:
-                    pw_urls.append(None)
-            out['password_images'] = pw_urls
-    except Exception:
-        pass
+    # Do not include or persist any password image data in the response
 
     return out
 
@@ -264,25 +250,8 @@ def list_items():
         except Exception:
             person_data_url = person_value if isinstance(person_value, str) else None
 
+        # We no longer store password image files; omit them from listing
         password_urls = []
-        try:
-            pw = m.get('password_image')
-            filenames = pw.get('filenames') if isinstance(pw, dict) else None
-            if filenames:
-                for fn in filenames:
-                    if not isinstance(fn, str) or not fn:
-                        password_urls.append(None)
-                        continue
-                    ppath = os.path.join(IMAGES_DIR, fn)
-                    if os.path.exists(ppath):
-                        ext = os.path.splitext(ppath)[1].lstrip('.') or 'jpeg'
-                        with open(ppath, 'rb') as f:
-                            pb = f.read()
-                        password_urls.append(f"data:image/{ext};base64,{base64.b64encode(pb).decode('ascii') }")
-                    else:
-                        password_urls.append(None)
-        except Exception:
-            password_urls = []
 
         selfie_data_url = next((url for url in password_urls if url), None)
         item_id = m.get('id')
@@ -298,102 +267,7 @@ def list_items():
     return jsonable_encoder(items)
 
 
-@app.post("/inventory/items/test", response_model=InventoryItem)
-def create_test_item():
-    """Create a test InventoryItem using a downloaded image for both person and password images."""
-    url = "https://cdn.pixabay.com/photo/2019/03/12/20/39/girl-4051811_960_720.jpg"
-    fname = "test_photo.jpg"
-    path = os.path.join(IMAGES_DIR, fname)
-
-    # download image
-    resp = requests.get(url, stream=True, timeout=10)
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Failed to download test image")
-    with open(path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
-
-    # use same file for person and create three password copies for test
-    person_filename = fname
-    # copy to UUID filenames so test entries use the same naming scheme
-    def _copy_to_uuid(src_path: str) -> str:
-        ext = os.path.splitext(src_path)[1] or '.jpg'
-        fname = f"{uuid4().hex}{ext}"
-        dst = os.path.join(IMAGES_DIR, fname)
-        shutil.copyfile(src_path, dst)
-        return dst
-
-    password_path1 = _copy_to_uuid(path)
-    password_path2 = _copy_to_uuid(path)
-    password_path3 = _copy_to_uuid(path)
-
-    pos1 = extract_body_and_hand_positions(password_path1)
-    pos2 = extract_body_and_hand_positions(password_path2)
-    pos3 = extract_body_and_hand_positions(password_path3)
-
-    fp1 = build_fingerprint(pos1)
-    fp2 = build_fingerprint(pos2)
-    fp3 = build_fingerprint(pos3)
-
-    db_item = InventoryItem(
-        item="test",
-        person_image=person_filename,
-        password_image={
-            "fingerprints": [fp1, fp2, fp3],
-        },
-    )
-
-    with Session(engine) as session:
-        session.add(db_item)
-        session.commit()
-        session.refresh(db_item)
-
-    # keep password copies on disk and record their filenames in the DB
-    filenames = [os.path.basename(password_path1), os.path.basename(password_path2), os.path.basename(password_path3)]
-    try:
-        with Session(engine) as session:
-            obj = session.get(InventoryItem, db_item.id)
-            if isinstance(obj.password_image, dict):
-                obj.password_image['filenames'] = filenames
-            else:
-                obj.password_image = {'filenames': filenames}
-            session.add(obj)
-            session.commit()
-            session.refresh(obj)
-            db_item = obj
-    except Exception:
-        pass
-
-    out = jsonable_encoder(db_item)
-    try:
-        imgpath = os.path.join(IMAGES_DIR, db_item.person_image) if db_item.person_image else None
-        if imgpath and os.path.exists(imgpath):
-            ext = os.path.splitext(imgpath)[1].lstrip('.') or 'jpeg'
-            with open(imgpath, 'rb') as f:
-                b = f.read()
-            out['person_image'] = f"data:image/{ext};base64,{base64.b64encode(b).decode('ascii') }"
-    except Exception:
-        out['person_image'] = db_item.person_image
-
-    try:
-        pfiles = db_item.password_image.get('filenames') if isinstance(db_item.password_image, dict) else None
-        if pfiles:
-            pw_urls = []
-            for fn in pfiles:
-                ppath = os.path.join(IMAGES_DIR, fn)
-                if os.path.exists(ppath):
-                    ext = os.path.splitext(ppath)[1].lstrip('.') or 'jpeg'
-                    with open(ppath, 'rb') as pf:
-                        pb = pf.read()
-                    pw_urls.append(f"data:image/{ext};base64,{base64.b64encode(pb).decode('ascii') }")
-                else:
-                    pw_urls.append(None)
-            out['password_images'] = pw_urls
-    except Exception:
-        pass
-
-    return out
+    
 
 
 @app.post("/inventory/items/{item_id}/unlock")
@@ -485,48 +359,3 @@ def unlock_item(
             pass
 
 
-@app.get("/inventory/items/{item_id}/unlock/test")
-def unlock_item_test(item_id: int):
-    """Attempt unlock using the stored person/test image for this item.
-
-    Compares the stored three fingerprints against the person image (used for all three attempts).
-    """
-    with Session(engine) as session:
-        item = session.get(InventoryItem, item_id)
-        if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
-
-    if not item.person_image:
-        raise HTTPException(status_code=400, detail="No person image available for this item")
-
-    person_path = os.path.join(IMAGES_DIR, item.person_image)
-    if not os.path.exists(person_path):
-        raise HTTPException(status_code=500, detail="Person image file missing on server")
-
-    afp = build_fingerprint(extract_body_and_hand_positions(person_path))
-
-    stored = item.password_image
-    if not stored or not isinstance(stored, dict):
-        raise HTTPException(status_code=400, detail="No stored fingerprint(s) for this item")
-
-    if 'fingerprints' in stored and isinstance(stored['fingerprints'], list) and len(stored['fingerprints']) >= 3:
-        sp1, sp2, sp3 = stored['fingerprints'][:3]
-    elif 'fingerprint' in stored:
-        sp = stored.get('fingerprint') or []
-        sp1 = sp2 = sp3 = sp
-    else:
-        raise HTTPException(status_code=400, detail="Stored fingerprint format unsupported")
-
-    s1 = compare_fingerprints(sp1, afp)
-    s2 = compare_fingerprints(sp2, afp)
-    s3 = compare_fingerprints(sp3, afp)
-
-    avg = float((s1 + s2 + s3) / 3.0)
-    success = avg >= UNLOCK_THRESHOLD
-
-    return jsonable_encoder({
-        "item_id": item_id,
-        "scores": [float(s1), float(s2), float(s3)],
-        "average": avg,
-        "success": bool(success),
-    })
