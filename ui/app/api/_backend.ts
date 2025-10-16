@@ -4,16 +4,16 @@ export function getBackendBase(req?: Request): string {
   const envProxy = process.env.API_PROXY_TARGET?.trim();
   const envPublic = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 
-  // If running locally (host header is localhost/127.0.0.1) prefer localhost backend
+  // Always prefer explicit proxy target when provided (Docker/prod)
+  if (envProxy) return envProxy;
+
+  // Otherwise, if running locally (host header is localhost/127.0.0.1), prefer localhost backend
   const host = req?.headers?.get("host") || "";
   const isLocalHost = /(^|:)localhost(:|$)|(^|:)127\.0\.0\.1(:|$)/i.test(host);
-  if (isLocalHost) {
-    // Use explicit override if provided, else default to local FastAPI
-    return envPublic || "http://localhost:8000";
-  }
+  if (isLocalHost) return envPublic || "http://localhost:8000";
 
-  // In Docker or deployed: prefer API_PROXY_TARGET if set, else fall back to public/base
-  return envProxy || envPublic || "http://localhost:8000";
+  // Fallbacks
+  return envPublic || "http://localhost:8000";
 }
 
 // Provide ordered candidates to try in case the primary base is unreachable.
@@ -23,17 +23,22 @@ export function getBackendBaseCandidates(req?: Request): string[] {
   const host = req?.headers?.get("host") || "";
   const isLocalHost = /(^|:)localhost(:|$)|(^|:)127\.0\.0\.1(:|$)/i.test(host);
 
-  if (isLocalHost) {
-    // Try localhost first, then docker internal if provided
-    const primary = envPublic || "http://localhost:8000";
-    const secondary = envProxy || "http://api:8000";
-    return primary === secondary ? [primary] : [primary, secondary];
+  // If explicit proxy target is set (Docker/prod), try it first
+  if (envProxy) {
+    const candidates = [envProxy];
+    if (envPublic && envPublic !== envProxy) candidates.push(envPublic);
+    if (!envPublic || envPublic !== "http://localhost:8000") candidates.push("http://localhost:8000");
+    return candidates;
   }
 
-  // In container or prod, try proxy target first, then fall back to localhost (for dev shells)
-  const primary = envProxy || envPublic || "http://localhost:8000";
-  const secondary = primary === "http://localhost:8000" ? undefined : "http://localhost:8000";
-  return secondary ? [primary, secondary] : [primary];
+  // Otherwise, local-first
+  if (isLocalHost) {
+    const primary = envPublic || "http://localhost:8000";
+    return [primary];
+  }
+
+  // Fallback when host is not local and no proxy specified
+  return [envPublic || "http://localhost:8000"]; 
 }
 
 // Only forward a safe subset of headers downstream
