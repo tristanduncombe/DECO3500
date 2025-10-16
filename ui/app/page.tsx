@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import CameraCapture from "./components/CameraCapture";
 import styles from "./page.module.css";
 import { getAuthToken } from "./utils/useAuth";
+import { getApiBase } from "@/app/utils/api";
 import { Refrigerator, Sword } from "lucide-react";
 
 type Stage = "idle" | "select" | "selfie" | "food" | "review" | "uploading" | "done";
@@ -35,7 +36,7 @@ export default function Page() {
   const fetchFoodItems = useCallback(async () => {
     setIsFetching(true);
     try {
-      const res = await fetch("http://localhost:8000/inventory/items");
+  const res = await fetch(`${getApiBase()}/inventory/items`);
       if (!res.ok) {
         throw new Error(`Inventory request failed (${res.status})`);
       }
@@ -101,7 +102,7 @@ export default function Page() {
       const token = await getAuthToken?.();
 
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "http://localhost:8000/inventory/items", true);
+      xhr.open("POST", `${getApiBase()}/inventory/items`, true);
       if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
       xhr.upload.onprogress = (e) => {
         if (!e.lengthComputable) return;
@@ -152,7 +153,7 @@ export default function Page() {
 
       const token = await getAuthToken?.();
 
-      const url = `http://localhost:8000/inventory/items/${selectedItemId}/unlock`;
+  const url = `${getApiBase()}/inventory/items/${selectedItemId}/unlock`;
 
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
