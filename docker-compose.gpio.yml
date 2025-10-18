@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile.gpio
     devices:
       - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/gpiochip0:/dev/gpiochip0"
+      - "/dev/gpiochip1:/dev/gpiochip1"
     privileged: false
     cap_add:
       - SYS_RAWIO

@@ -8,9 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install uv and build deps (plus RPi.GPIO for GPIO control)
+# Install uv and build deps (plus libgpiod for Pi5/new kernels)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates build-essential libgl1 libglib2.0-0 libpq5 libsm6 libxrender1 libxext6 python3-rpi.gpio \
+    curl ca-certificates build-essential libgl1 libglib2.0-0 libpq5 libsm6 libxrender1 libxext6 python3-libgpiod \
  && rm -rf /var/lib/apt/lists/* \
  && curl -LsSf https://astral.sh/uv/install.sh | sh
 

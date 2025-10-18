@@ -272,59 +272,148 @@ try:
     solenoid  # type: ignore[name-defined]
     GPIO_UNLOCK_SECONDS  # type: ignore[name-defined]
 except NameError:
+    # Prefer RPi.GPIO; fallback to libgpiod for Pi 5/new kernels
     try:
         import RPi.GPIO as GPIO  # type: ignore
         HAS_GPIO = True
     except Exception:
-        GPIO = None  # type: ignore
         HAS_GPIO = False
+        # Minimal stub to satisfy linters/type-checkers when GPIO is unavailable
+        class _GPIOStub:
+            BCM = 11
+            BOARD = 10
+            HIGH = 1
+            LOW = 0
+            OUT = 0
+            def setwarnings(self, *a, **k): pass
+            def setmode(self, *a, **k): pass
+            def setup(self, *a, **k): pass
+            def output(self, *a, **k): pass
+        GPIO = _GPIOStub()  # type: ignore
+    try:
+        import gpiod  # type: ignore
+        HAS_GPIOD = True
+    except Exception:
+        HAS_GPIOD = False
+        # Minimal stub for libgpiod symbols to avoid lint errors
+        class _GpiodStub:
+            class LineDirection:
+                OUTPUT = 1
+            class LineSettings:
+                def __init__(self, *a, **k): pass
+            LINE_REQ_DIR_OUT = 1
+            class Chip:
+                def __init__(self, *a, **k): pass
+                def request_lines(self, *a, **k):
+                    class _Req:
+                        def set_values(self, *a, **k): pass
+                    return _Req()
+                def get_line(self, *a, **k):
+                    class _Line:
+                        def request(self, *a, **k): pass
+                        def set_value(self, *a, **k): pass
+                    return _Line()
+        gpiod = _GpiodStub()  # type: ignore
 
     class SolenoidController:
         def __init__(self, pin: int, active_low: bool = True):
             self.pin = pin
             self.active_low = active_low
             self.initialized = False
+            self._backend = None  # 'RPi' or 'gpiod'
+            # Backend 1: RPi.GPIO
             if HAS_GPIO:
                 try:
                     GPIO.setwarnings(False)
                     GPIO.setmode(GPIO.BCM)
-                    # Default to locked (relay off)
                     initial_level = GPIO.HIGH if self.active_low else GPIO.LOW
                     GPIO.setup(self.pin, GPIO.OUT, initial=initial_level)
+                    self._backend = 'RPi'
+                    self.initialized = True
+                    return
+                except Exception:
+                    logger.exception("Failed to initialize RPi.GPIO; trying gpiod")
+            # Backend 2: libgpiod
+            if HAS_GPIOD:
+                try:
+                    # Chip selection: default gpiochip0
+                    try:
+                        chip = gpiod.Chip('gpiochip0')  # libgpiod v2 preferred
+                    except Exception:
+                        chip = gpiod.Chip(0)  # fallback
+                    self._chip = chip
+                    # Configure line as output with initial OFF level
+                    off_val = 1 if self.active_low else 0
+                    try:
+                        # libgpiod v2 API
+                        cfg = {self.pin: gpiod.LineSettings(direction=gpiod.LineDirection.OUTPUT,
+                                                             output_value=off_val)}
+                        self._req = chip.request_lines(consumer='deco-solenoid', config=cfg)
+                    except Exception:
+                        # libgpiod v1 API
+                        line = chip.get_line(self.pin)
+                        line.request(consumer='deco-solenoid', type=gpiod.LINE_REQ_DIR_OUT, default_vals=[off_val])
+                        self._line = line
+                    self._backend = 'gpiod'
                     self.initialized = True
                 except Exception:
-                    logger.exception("Failed to initialize GPIO; solenoid control disabled")
+                    logger.exception("Failed to initialize libgpiod; solenoid control disabled")
 
         def _on_level(self):
             # Energize solenoid
-            return GPIO.LOW if self.active_low else GPIO.HIGH
+            if self._backend == 'RPi':
+                return GPIO.LOW if self.active_low else GPIO.HIGH
+            # gpiod uses 0/1
+            return 0 if self.active_low else 1
 
         def _off_level(self):
             # De-energize solenoid
-            return GPIO.HIGH if self.active_low else GPIO.LOW
+            if self._backend == 'RPi':
+                return GPIO.HIGH if self.active_low else GPIO.LOW
+            return 1 if self.active_low else 0
 
         def set_locked(self, locked: bool = True):
             if not self.initialized:
                 return
             try:
-                GPIO.output(self.pin, self._off_level() if locked else self._on_level())
+                if self._backend == 'RPi':
+                    GPIO.output(self.pin, self._off_level() if locked else self._on_level())
+                elif self._backend == 'gpiod':
+                    val = self._off_level() if locked else self._on_level()
+                    if hasattr(self, '_req'):
+                        self._req.set_values({self.pin: val})
+                    else:
+                        self._line.set_value(val)
             except Exception:
                 logger.exception("GPIO output failed")
 
         def unlock_for(self, seconds: float = 30.0):
-            # Runs in a background task
             if not self.initialized:
                 logger.warning("GPIO not available; simulated unlock for %ss", seconds)
                 time.sleep(seconds)
                 return
             try:
                 # Unlock (energize)
-                GPIO.output(self.pin, self._on_level())
+                if self._backend == 'RPi':
+                    GPIO.output(self.pin, self._on_level())
+                else:
+                    val = self._on_level()
+                    if hasattr(self, '_req'):
+                        self._req.set_values({self.pin: val})
+                    else:
+                        self._line.set_value(val)
                 time.sleep(seconds)
             finally:
                 # Relock (de-energize)
                 try:
-                    GPIO.output(self.pin, self._off_level())
+                    if self._backend == 'RPi':
+                        GPIO.output(self.pin, self._off_level())
+                    else:
+                        val = self._off_level()
+                        if hasattr(self, '_req'):
+                            self._req.set_values({self.pin: val})
+                        else:
+                            self._line.set_value(val)
                 except Exception:
                     logger.exception("Failed to relock solenoid after unlock window")
 

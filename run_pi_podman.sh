@@ -19,8 +19,8 @@ command -v podman >/dev/null 2>&1 || { echo "Error: podman not found" >&2; exit 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if [ ! -e /dev/gpiomem ]; then
-  echo "Warning: /dev/gpiomem not present; GPIO will not be available inside the container." >&2
+if [ ! -e /dev/gpiomem ] && [ ! -e /dev/gpiochip0 ]; then
+  echo "Warning: no GPIO devices (/dev/gpiomem or /dev/gpiochip0) present; GPIO will not be available inside the container." >&2
 fi
 
 set -x
