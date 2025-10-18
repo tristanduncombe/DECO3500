@@ -12,6 +12,10 @@ services:
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/deco
       - CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000,http://103.249.239.235:3000,https://103.249.239.235:3000,http://103.249.239.235,https://103.249.239.235,https://fridge.tristanduncombe.com"
+      # GPIO configuration
+      - GPIO_PIN=18
+      - GPIO_ACTIVE_LOW=1
+      - GPIO_UNLOCK_SECONDS=30
     volumes:
       # Persist uploaded images between container restarts
       - api_images:/app/images

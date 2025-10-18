@@ -1,0 +1,10 @@
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.gpio
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"
+    privileged: false
+    cap_add:
+      - SYS_RAWIO
