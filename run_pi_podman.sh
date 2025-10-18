@@ -19,9 +19,6 @@ command -v podman >/dev/null 2>&1 || { echo "Error: podman not found" >&2; exit 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Bring down any previous stack to avoid name conflicts
-"${COMPOSE_CMD[@]}" -f docker-compose.yml -f docker-compose.gpio.yml down || true
-
 if [ ! -e /dev/gpiomem ] && [ ! -e /dev/gpiochip0 ]; then
   echo "Warning: no GPIO devices (/dev/gpiomem or /dev/gpiochip0) present; GPIO will not be available inside the container." >&2
 fi
