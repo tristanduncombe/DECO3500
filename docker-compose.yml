@@ -1,6 +1,7 @@
 services:
   api:
-    build: ./api
+    build:
+      context: ./api
     container_name: deco_api
     depends_on:
       db:
