@@ -17,6 +17,7 @@ import logging
 import tempfile
 from datetime import datetime, timedelta, timezone
 import threading
+from pydantic import BaseModel
 
 UNLOCK_THRESHOLD = 0.8
 UNLOCK_WINDOW_SECONDS = 30
@@ -125,7 +126,11 @@ class InventoryItem(SQLModel):
         table = True
 
 
-class InventoryItemResponse(InventoryItem):
+class InventoryItemResponse(BaseModel):
+    id: Optional[int]
+    item: str
+    person_image: Optional[str]
+    password_image: Optional[dict]
     unlock_expires_at: Optional[str] = None
 
 SQLModel.metadata.create_all(engine)
