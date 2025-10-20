@@ -15,8 +15,11 @@ from sqlalchemy.dialects.postgresql import JSONB
 from uuid import uuid4
 import logging
 import tempfile
+from datetime import datetime, timedelta, timezone
+import threading
 
 UNLOCK_THRESHOLD = 0.8
+UNLOCK_WINDOW_SECONDS = 30
 
 app = FastAPI()
 
@@ -52,6 +55,34 @@ def get_database_url() -> str:
 
 DATABASE_URL = get_database_url()
 engine = None
+
+_lock = threading.Lock()
+_lock_state: dict[str, Optional[datetime]] = {"expires_at": None}
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _set_unlocked_for(duration_seconds: int) -> datetime:
+    unlock_until = _now_utc() + timedelta(seconds=duration_seconds)
+    with _lock:
+        _lock_state["expires_at"] = unlock_until
+    return unlock_until
+
+
+def _current_lock_state() -> dict:
+    with _lock:
+        expires_at = _lock_state.get("expires_at")
+    if expires_at and expires_at <= _now_utc():
+        with _lock:
+            _lock_state["expires_at"] = None
+        expires_at = None
+    locked = expires_at is None
+    return {
+        "locked": locked,
+        "unlock_expires_at": expires_at.isoformat() if expires_at else None,
+    }
 
 def init_engine_with_retry(max_attempts: int = 20, delay: float = 1.5):
     global engine
@@ -93,9 +124,13 @@ class InventoryItem(SQLModel):
     class Config:
         table = True
 
+
+class InventoryItemResponse(InventoryItem):
+    unlock_expires_at: Optional[str] = None
+
 SQLModel.metadata.create_all(engine)
 
-@app.post("/inventory/items", response_model=InventoryItem)
+@app.post("/inventory/items", response_model=InventoryItemResponse)
 def create_item(
     item: str = Form(...),
     person_image: UploadFile = File(...),
@@ -180,6 +215,8 @@ def create_item(
         pass
 
     # embed person image bytes and password images as data URLs in the returned payload
+    unlock_until = _set_unlocked_for(UNLOCK_WINDOW_SECONDS)
+
     out = jsonable_encoder(db_item)
     try:
         imgpath = os.path.join(IMAGES_DIR, db_item.person_image) if db_item.person_image else None
@@ -190,6 +227,8 @@ def create_item(
             out['person_image'] = f"data:image/{ext};base64,{base64.b64encode(b).decode('ascii') }"
     except Exception:
         out['person_image'] = db_item.person_image
+
+    out['unlock_expires_at'] = unlock_until.isoformat()
 
     # Do not include or persist any password image data in the response
 
@@ -319,12 +358,15 @@ def unlock_item(
 
             response_payload = {
                 "item_id": item_id,
+                "item": item.item,
                 "scores": [float(s1), float(s2), float(s3)],
                 "average": avg,
                 "success": bool(success),
             }
 
             if success:
+                unlock_until = _set_unlocked_for(UNLOCK_WINDOW_SECONDS)
+                response_payload["unlock_expires_at"] = unlock_until.isoformat()
                 person_filename = item.person_image
                 password_filenames = []
                 if isinstance(stored, dict):
@@ -357,5 +399,10 @@ def unlock_item(
             os.remove(tmp3)
         except Exception:
             pass
+
+@app.get("/lock/state")
+def get_lock_state():
+    return jsonable_encoder(_current_lock_state())
+
 
 
