@@ -423,11 +423,17 @@
 }
 
 /* Message and footer */
-.message{
-  margin-top:8px;
-  color:#0f172a;
-  font-weight:700;
-  text-align:left;
+.message {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 16px;
+  background: #e0f7fa;
+  color: #0f172a;
+  font-weight: 700;
+  text-align: center;
+  margin-top: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .footer {

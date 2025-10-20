@@ -1,0 +1,16 @@
+[project]
+name = "api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11, <3.13"
+dependencies = [
+    "fastapi>=0.116.1",
+    "fastapi-cli>=0.0.10",
+    "python-multipart>=0.0.20",
+    "sqlmodel>=0.0.24",
+    "mediapipe>=0.10.3",
+    "opencv-python>=4.8.0",
+    "requests>=2.32.5",
+    "psycopg>=3.2.10",
+]

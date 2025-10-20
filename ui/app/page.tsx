@@ -444,13 +444,13 @@ export default function Page() {
           <h2 className={styles.title}>Review</h2>
           {mode === "put" && (
             <div className={styles.inputGroup}>
-              <label className={styles.inputLabel} htmlFor="item-name">Item name</label>
+              <label className={styles.inputLabel + " mr-2"} htmlFor="item-name">Item name</label>
               <input
                 id="item-name"
                 type="text"
                 value={itemName}
                 onChange={(e) => setItemName(e.target.value)}
-                className={styles.textInput}
+                className={styles.textInput + " px-2  rounded-2xl"}
                 placeholder="e.g. Leftover curry"
                 autoComplete="off"
               />
