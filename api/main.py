@@ -16,7 +16,6 @@ from uuid import uuid4
 import logging
 import tempfile
 from datetime import datetime, timedelta, timezone
-import threading
 from pydantic import BaseModel
 
 UNLOCK_THRESHOLD = 0.8
@@ -57,7 +56,6 @@ def get_database_url() -> str:
 DATABASE_URL = get_database_url()
 engine = None
 
-_lock = threading.Lock()
 _lock_state: dict[str, Optional[datetime]] = {"expires_at": None}
 
 
@@ -67,17 +65,14 @@ def _now_utc() -> datetime:
 
 def _set_unlocked_for(duration_seconds: int) -> datetime:
     unlock_until = _now_utc() + timedelta(seconds=duration_seconds)
-    with _lock:
-        _lock_state["expires_at"] = unlock_until
+    _lock_state["expires_at"] = unlock_until
     return unlock_until
 
 
 def _current_lock_state() -> dict:
-    with _lock:
-        expires_at = _lock_state.get("expires_at")
+    expires_at = _lock_state.get("expires_at")
     if expires_at and expires_at <= _now_utc():
-        with _lock:
-            _lock_state["expires_at"] = None
+        _lock_state["expires_at"] = None
         expires_at = None
     locked = expires_at is None
     return {
