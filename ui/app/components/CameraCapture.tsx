@@ -106,7 +106,15 @@ export default function CameraCapture({
       <div style={{ fontWeight: 700 }}>{label}</div>
       {error && <div style={{ color: "crimson" }}>{error}</div>}
       <div style={{ position: "relative", width: "100%", height: "100%", background: "#000" }}>
-        <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <video
+          ref={videoRef}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            transform: "scaleX(-1)" // mirror the camera preview
+          }}
+        />
         {countdown !== null && (
           <div style={{
             position: "absolute",
