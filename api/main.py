@@ -69,6 +69,10 @@ def _set_unlocked_for(duration_seconds: int) -> datetime:
     return unlock_until
 
 
+def _set_locked() -> None:
+    _lock_state["expires_at"] = None
+
+
 def _current_lock_state() -> dict:
     expires_at = _lock_state.get("expires_at")
     if expires_at and expires_at <= _now_utc():
@@ -306,9 +310,6 @@ def list_items():
     return jsonable_encoder(items)
 
 
-    
-
-
 @app.post("/inventory/items/{item_id}/unlock")
 def unlock_item(
     item_id: int,
@@ -399,6 +400,19 @@ def unlock_item(
             os.remove(tmp3)
         except Exception:
             pass
+
+class LockStateUpdate(BaseModel):
+    locked: bool
+    unlock_duration: int | None = None
+
+@app.post("/lock/state")
+def set_lock_state(update: LockStateUpdate):
+    if update.locked:
+        _set_locked()
+    else:
+        duration = update.unlock_duration or UNLOCK_WINDOW_SECONDS
+        _set_unlocked_for(duration)
+    return jsonable_encoder(_current_lock_state())
 
 @app.get("/lock/state")
 def get_lock_state():
