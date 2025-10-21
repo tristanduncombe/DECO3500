@@ -18,7 +18,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 
-UNLOCK_THRESHOLD = 0.8
+UNLOCK_THRESHOLD = 0.6
 UNLOCK_WINDOW_SECONDS = 30
 
 app = FastAPI()
