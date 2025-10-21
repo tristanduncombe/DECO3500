@@ -9,7 +9,7 @@ OFF_STATE = 0 if ACTIVE_HIGH else 1
 
 
 def main() -> None:
-    chip = gpiod.Chip(GPIO_CHIP_NAME)
+    chip = gpiod.Chip('gpiochip4')
     solenoid_line = chip.get_line(SOLENOID_PIN)
     solenoid_line.request(
         consumer="solenoid-toggle",
