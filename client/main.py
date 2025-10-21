@@ -5,26 +5,42 @@ from time import sleep
 from typing import Any, Dict
 
 import requests
-from gpiod import OutputDevice
+import gpiod
 
 BACKEND_BASE_URL = "http://103.249.239.235:8000"
 LOCK_STATE_ENDPOINT = f"{BACKEND_BASE_URL.rstrip('/')}/lock/state"
 POLL_INTERVAL_SECONDS = 1.0
 GPIO_PIN = 18
+GPIO_CHIP_NAME = "gpiochip4"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("lock-watcher")
 
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-lock_output = OutputDevice(GPIO_PIN, active_high=True, initial_value=True)
+chip: gpiod.Chip | None = None
+lock_line: gpiod.Line | None = None
 
+try:
+    chip = gpiod.Chip(GPIO_CHIP_NAME)
+    lock_line = chip.get_line(GPIO_PIN)
+    lock_line.request(consumer="lock-watcher", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[1])
+except (OSError, RuntimeError) as exc:
+    logger.error("Failed to initialize GPIO line %s/%s: %s", GPIO_CHIP_NAME, GPIO_PIN, exc)
+    sys.exit(1)
 
 def cleanup_and_exit(exit_code: int = 0) -> None:
     try:
-        lock_output.on()
+        if lock_line is not None:
+            lock_line.set_value(1)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.debug("Failed to drive line high during cleanup: %s", exc)
     finally:
-        lock_output.close()
+        if lock_line is not None:
+            try:
+                lock_line.release()
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.debug("Failed to release line: %s", exc)
+        if chip is not None:
+            chip.close()
     sys.exit(exit_code)
 
 
@@ -51,10 +67,9 @@ def fetch_lock_state() -> Dict[str, Any] | None:
 
 
 def apply_lock_state(locked: bool) -> None:
-    if locked:
-        lock_output.on()
-    else:
-        lock_output.off()
+    if lock_line is None:
+        raise RuntimeError("GPIO line not initialized")
+    lock_line.set_value(1 if locked else 0)
     logger.debug("GPIO %s -> %s", GPIO_PIN, "HIGH" if locked else "LOW")
 
 
