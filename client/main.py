@@ -5,7 +5,7 @@ from time import sleep
 from typing import Any, Dict
 
 import requests
-from gpiozero import OutputDevice
+from gpiod import OutputDevice
 
 BACKEND_BASE_URL = "http://103.249.239.235:8000"
 LOCK_STATE_ENDPOINT = f"{BACKEND_BASE_URL.rstrip('/')}/lock/state"

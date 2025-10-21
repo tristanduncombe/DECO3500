@@ -27,15 +27,18 @@ export default function Page() {
   const [foodPhoto, setFoodPhoto] = useState<Blob | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [message, setMessage] = useState<string | null>(null);
+  const [itemName, setItemName] = useState<string>("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [unlockExpiresAt, setUnlockExpiresAt] = useState<Date | null>(null);
+  const [lockCountdown, setLockCountdown] = useState<number>(0);
 
   const fetchFoodItems = useCallback(async () => {
     setIsFetching(true);
     try {
-  const res = await fetch(`/api/inventory/items`);
+      const res = await fetch(`/api/inventory/items`);
       if (!res.ok) {
         throw new Error(`Inventory request failed (${res.status})`);
       }
@@ -56,12 +59,63 @@ export default function Page() {
     void fetchFoodItems();
   }, [fetchFoodItems]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const updateLockState = async () => {
+      try {
+        const res = await fetch(`/api/lock/state`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Lock state request failed (${res.status})`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!data.locked && data.unlock_expires_at) {
+          const expiry = new Date(data.unlock_expires_at);
+          if (!Number.isNaN(expiry.getTime())) {
+            setUnlockExpiresAt(expiry);
+            return;
+          }
+        }
+        setUnlockExpiresAt(null);
+      } catch (err) {
+        if (!cancelled) console.error("Failed to fetch lock state", err);
+      }
+    };
+    void updateLockState();
+    const intervalId = window.setInterval(updateLockState, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!unlockExpiresAt) {
+      setLockCountdown(0);
+      return;
+    }
+    const tick = () => {
+      const diffMs = unlockExpiresAt.getTime() - Date.now();
+      const diffSeconds = Math.ceil(diffMs / 1000);
+      if (diffSeconds > 0) {
+        setLockCountdown(diffSeconds);
+      } else {
+        setLockCountdown(0);
+        setUnlockExpiresAt(null);
+      }
+    };
+    tick();
+    const timerId = window.setInterval(tick, 1000);
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [unlockExpiresAt]);
+
   function start(action: "put" | "take") {
     setMode(action);
     setSelfies([]);
     setFoodPhoto(null);
     setProgress(0);
     setMessage(null);
+    setItemName("");
     setSelectedItemId(null);
     setStage(action === "take" ? "select" : "selfie");
     void fetchFoodItems();
@@ -84,17 +138,19 @@ export default function Page() {
     setProgress(0);
 
     try {
+      const trimmedItemName = itemName.trim();
       const normalizedSelfies: File[] = selfies.slice(0, MAX_FILES).map((b, i) =>
         b instanceof File ? b : new File([b], `selfie-${i + 1}.jpg`, { type: b?.type || "image/jpeg" })
       );
 
       if (normalizedSelfies.length !== 3) throw new Error("Exactly 3 selfies are required");
       if (!foodPhoto) throw new Error("Food photo is required");
+      if (!trimmedItemName) throw new Error("Please enter a name for the item");
 
       const foodFile = new File([foodPhoto], "food.jpg", { type: foodPhoto.type || "image/jpeg" });
 
       const fd = new FormData();
-      fd.append("item", "New Item");
+      fd.append("item", trimmedItemName);
       fd.append("person_image", foodFile);
       normalizedSelfies.forEach((f, i) => fd.append(`password_image_${i + 1}`, f, f.name));
 
@@ -109,13 +165,26 @@ export default function Page() {
       };
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          setMessage("Item successfully added to fridge");
-          setStage("done");
-          if (typeof window !== "undefined") {
-            setTimeout(() => {
-              window.location.reload();
-            }, 750);
+          let result: { item?: string; unlock_expires_at?: string } | null = null;
+          try {
+            result = JSON.parse(xhr.responseText);
+          } catch (parseErr) {
+            console.warn("Unable to parse create item response", parseErr);
           }
+          const label = typeof result?.item === "string" && result.item.trim() ? result.item.trim() : trimmedItemName;
+          const expiresIso = typeof result?.unlock_expires_at === "string" ? result?.unlock_expires_at : null;
+          if (expiresIso) {
+            const expiry = new Date(expiresIso);
+            if (!Number.isNaN(expiry.getTime())) {
+              setUnlockExpiresAt(expiry);
+            }
+          }
+          setMessage(`Fridge unlocked for 30 seconds. Place "${label}" inside now.`);
+          setStage("done");
+          setSelfies([]);
+          setFoodPhoto(null);
+          setItemName("");
+          void fetchFoodItems();
         } else {
           setMessage(`Upload failed: ${xhr.status}`);
           setStage("review");
@@ -152,7 +221,7 @@ export default function Page() {
 
       const token = await getAuthToken?.();
 
-  const url = `/api/inventory/items/${selectedItemId}/unlock`;
+      const url = `/api/inventory/items/${selectedItemId}/unlock`;
 
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
@@ -165,7 +234,15 @@ export default function Page() {
         if (xhr.status >= 200 && xhr.status < 300) {
           const result = JSON.parse(xhr.responseText);
           if (result.success) {
-            setMessage("Unlock successful! You may take the item.");
+            const label: string = result.item || "Selected item";
+            const expiresIso: string | null = result.unlock_expires_at || null;
+            if (expiresIso) {
+              const expiry = new Date(expiresIso);
+              if (!Number.isNaN(expiry.getTime())) {
+                setUnlockExpiresAt(expiry);
+              }
+            }
+            setMessage(`Unlock successful! ${label} is unlocked.`);
             setStage("done");
             setSelectedItemId(null);
             if (typeof window !== "undefined") {
@@ -199,15 +276,28 @@ export default function Page() {
   const visibleItems = foodItems.slice(0, MAX_SLOTS);
   const emptySlots = Math.max(0, MAX_SLOTS - visibleItems.length);
   const shouldHideInventory = stage !== "idle" && stage !== "select";
+  const countdownActive = lockCountdown > 0;
+  const countdownLabel = countdownActive
+    ? `${Math.floor(lockCountdown / 60)
+        .toString()
+        .padStart(2, "0")}:${(lockCountdown % 60).toString().padStart(2, "0")}`
+    : "00:00";
 
   return (
     <main className={styles.shell} role="main">
       <header className={styles.header}>
-        <div className={styles.brand + " flex items-center"}><Refrigerator/>Fridge or Foe<Sword /></div>
+        <div className={styles.brand + " flex items-center"}><Refrigerator />Fridge or Foe<Sword /></div>
         <div className={styles.modeHint}>
           {stage === "idle" ? "Choose an action to begin" : `Mode: ${mode?.toUpperCase() ?? "--"}`}
         </div>
       </header>
+
+      {countdownActive && (
+        <div className={`${styles.statusBanner} ${styles.statusUnlocked}`} role="status" aria-live="polite">
+          <span>Fridge unlocked</span>
+          <span className={styles.countdown}>{countdownLabel}</span>
+        </div>
+      )}
 
       <section className={styles.actions}>
         <button
@@ -352,6 +442,20 @@ export default function Page() {
       {stage === "review" && (
         <section className={styles.panel}>
           <h2 className={styles.title}>Review</h2>
+          {mode === "put" && (
+            <div className={styles.inputGroup}>
+              <label className={styles.inputLabel + " mr-2"} htmlFor="item-name">Item name</label>
+              <input
+                id="item-name"
+                type="text"
+                value={itemName}
+                onChange={(e) => setItemName(e.target.value)}
+                className={styles.textInput + " px-2  rounded-2xl"}
+                placeholder="e.g. Leftover curry"
+                autoComplete="off"
+              />
+            </div>
+          )}
           <div className={styles.previewGrid}>
             <div className={styles.previewCard}>
               <div className={styles.previewTitle}>Selfies</div>
