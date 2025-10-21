@@ -25,7 +25,7 @@ def fetch_lock_state() -> bool:
 
 
 def main() -> None:
-    chip = gpiod.Chip('gpiochip4')
+    chip = gpiod.Chip(GPIO_CHIP_NAME)
     solenoid_line = chip.get_line(SOLENOID_PIN)
     solenoid_line.request(
         consumer="solenoid-toggle",
@@ -34,10 +34,12 @@ def main() -> None:
     )
 
     try:
-        locked = True
         while True:
             locked = fetch_lock_state()
-            solenoid_line.set_value(ON_STATE if locked else OFF_STATE)
+            if locked:
+                solenoid_line.set_value(ON_STATE)
+            else:
+                solenoid_line.set_value(OFF_STATE)
             sleep(POLL_INTERVAL_SECONDS)
     finally:
         solenoid_line.set_value(OFF_STATE)
