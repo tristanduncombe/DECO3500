@@ -1,66 +1,140 @@
-# FridgeOrFoe
+<h1 align="center">
+  <a href=".">
+    <img src="images/readme-ui.png" alt="FridgeOrFoe" width="125" height="125">
+  </a>
+</h1>
 
-_Shared fridges often suffer petty food theft and low social interaction; this project deters casual theft while encouraging playful, meaningful interactions around food._
+<div align="center">
+  FridgeOrFoe — a prototype smart-lock + social UX for shared fridges
+  <br />
+  <br />
+  <a href="https://github.com/tdunc/FridgeOrFoe/issues/new?assignees=&labels=bug&template=bug_report.md&title=bug%3A+">Report a Bug</a>
+  ·
+  <a href="https://github.com/tdunc/FridgeOrFoe/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=feat%3A+">Request a Feature</a>
+  ·
+  <a href="https://github.com/tdunc/FridgeOrFoe/discussions">Ask a Question</a>
+</div>
 
-![Fridge or Foe UI](images/readme-ui.png)
+<div align="center">
+<br />
+[![license](https://img.shields.io/github/license/tdunc/FridgeOrFoe.svg?style=flat-square)](LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg?style=flat-square)](https://github.com/tdunc/FridgeOrFoe/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+</div>
 
-FridgeOrFoe is a small prototype demonstrating a server-backed smart lock for a shared fridge. It includes:
-- A FastAPI backend that stores inventory items and manages a short unlock window.
-- A browser UI (Next.js) for adding/removing items and capturing/uploading photos.
-- A Raspberry Pi client that polls lock state and drives a solenoid via libgpiod.
+<details open="open">
+<summary>Table of Contents</summary>
 
-Contents
-- API service: [api/main.py](api/main.py)
-- API helpers: [api/src/password.py](api/src/password.py) (key functions: [`src.password.extract_body_and_hand_positions`](api/src/password.py), [`src.password.build_fingerprint`](api/src/password.py), [`src.password.compare_fingerprints`](api/src/password.py))
-- UI: [ui/app/page.tsx](ui/app/page.tsx) and components such as [`CameraCapture`](ui/app/components/CameraCapture.tsx)
-- UI utils: [`getApiBase`](ui/app/utils/api.ts), [`getAuthToken`](ui/app/utils/useAuth.ts), and the uploader [`uploadFridgeAction`](ui/app/utils/upload.ts)
-- Pi client: [client/main.py](client/main.py)
-- Docker orchestration: [docker-compose.yml](docker-compose.yml)
-- Dockerfiles: [api/Dockerfile](api/Dockerfile), [ui/Dockerfile](ui/Dockerfile)
-- UI README: [ui/README.md](ui/README.md)
+- [About](#about)
+- [Built With](#built-with)
+- [Quick start (Docker)](#quick-start-docker)
+- [API endpoints (examples)](#api-endpoints-examples)
+- [Architecture & key files](#architecture--key-files)
+- [Development notes](#development-notes)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
 
-Quick start (Docker, recommended)
-1. From project root:
-   npm: docker compose up --build
-2. Services:
-   - API: http://localhost:8000 — docs: http://localhost:8000/docs
-   - UI:  http://localhost:3000
+</details>
 
-Example API endpoints
+---
+
+## About
+
+Shared fridges often suffer petty food theft and low social interaction. FridgeOrFoe is a small prototype that deters casual theft and encourages playful, meaningful interactions around food. It uses a short-lived server-side unlock window and a human-pose "password" assembled from three photos.
+
+Key behavior:
+- Add an item: upload a person photo + three password photos → backend persists person image, extracts pose/hand landmarks, builds compact fingerprints and opens the lock briefly.
+- Remove an item: upload three attempt photos → backend compares fingerprints and opens the lock on success.
+
+Fingerprint logic lives in api/src/password.py.
+
+---
+
+### Built With
+
+- FastAPI (backend)
+- Next.js (UI)
+- SQLite / local persistence (backend)
+- Docker / docker-compose for orchestration
+
+---
+
+## Quick start (Docker)
+
+From the repository root:
+
+```sh
+# Build and run all services (recommended)
+docker compose up --build
+```
+
+Services:
+- API: http://localhost:8000 — docs: http://localhost:8000/docs
+- UI:  http://localhost:3000
+
+---
+
+## API endpoints (examples)
+
 - Get lock state
   curl -s http://localhost:8000/lock/state | jq
+
 - Set lock (lock)
   curl -X POST -H "Content-Type: application/json" -d '{"locked": true}' http://localhost:8000/lock/state
+
 - Unlock for N seconds
   curl -X POST -H "Content-Type: application/json" -d '{"locked": false, "unlock_duration": 20}' http://localhost:8000/lock/state
 
-How it works (high level)
-- Adding an item (UI POST to `/inventory/items`) uploads a person image and three "password" images. The backend:
-  - Saves the person image (persisted under `api/images`) and temporarily processes the three password photos.
-  - Extracts pose/hand landmarks via [`src.password.extract_body_and_hand_positions`](api/src/password.py) and converts those to a compact fingerprint via [`src.password.build_fingerprint`](api/src/password.py).
-  - Stores the item record (with fingerprints) and opens the lock for a short window (configurable in [api/main.py](api/main.py) via `UNLOCK_WINDOW_SECONDS` and `UNLOCK_THRESHOLD`).
-- Unlocking an item uploads three attempt images to `/inventory/items/{id}/unlock`. The backend computes fingerprints and compares with stored fingerprints using [`src.password.compare_fingerprints`](api/src/password.py). On success the item is removed and the lock opens briefly.
+- Add item (uploads photos and fingerprints)
+  POST /inventory/items
 
-Development notes
-- The UI proxies API requests using server route handlers in [ui/app/api/_backend.ts](ui/app/api/_backend.ts) and the client page uses [`getApiBase`](ui/app/utils/api.ts) to determine base URL.
-- The UI uses client-side captures with [ui/app/components/CameraCapture.tsx](ui/app/components/CameraCapture.tsx) and uploads via [`uploadFridgeAction`](ui/app/utils/upload.ts).
-- The Pi client in [client/main.py](client/main.py) polls `/lock/state` and toggles a GPIO line using libgpiod. Adjust `BACKEND_BASE_URL` if your API is not at the default address.
+- Attempt unlock for item
+  POST /inventory/items/{id}/unlock
 
-Testing & troubleshooting
-- If the API fails to connect to the DB, check container logs and ensure the DB service is healthy (see [docker-compose.yml](docker-compose.yml)).
-- Uploaded images are persisted to the `api_images` Docker volume (mounted to `api/images`) — this is configured in [docker-compose.yml](docker-compose.yml).
-- If camera access fails in the browser, confirm permissions and that the device has a camera. The capture component mirrors the preview for selfies.
+(See api/main.py for configurable UNLOCK_WINDOW_SECONDS and UNLOCK_THRESHOLD.)
 
-Security & privacy
-- Password photos are processed and not persisted; only fingerprint vectors are stored (see [api/src/password.py](api/src/password.py) for sanitization logic).
-- The backend exposes CORS origins controlled by the `CORS_ORIGINS` environment variable (configured in [docker-compose.yml](docker-compose.yml)); adjust for your deployment.
+---
 
-Useful files to inspect
-- Backend API and routes: [api/main.py](api/main.py)
-- Fingerprint/vision utilities: [api/src/password.py](api/src/password.py)
-- UI entry: [ui/app/page.tsx](ui/app/page.tsx)
-- UI server-side proxy helpers: [ui/app/api/_backend.ts](ui/app/api/_backend.ts)
-- Pi client: [client/main.py](client/main.py)
-- Compose orchestration: [docker-compose.yml](docker-compose.yml)
-- UI Dockerfile: [ui/Dockerfile](ui/Dockerfile)
-- API Dockerfile: [api/Dockerfile](api/Dockerfile)
+## Architecture & key files
+
+- Backend API: api/main.py  
+- Vision / fingerprints: api/src/password.py — key functions: extract_body_and_hand_positions, build_fingerprint, compare_fingerprints
+- UI entry: ui/app/page.tsx and CameraCapture component at ui/app/components/CameraCapture.tsx
+- UI helpers & uploader: ui/app/utils/api.ts, ui/app/utils/useAuth.ts, ui/app/utils/upload.ts
+- UI server proxy: ui/app/api/_backend.ts
+- Pi client: client/main.py (polls /lock/state and toggles GPIO)
+
+---
+
+## Development notes
+
+- UI proxies API requests via ui/app/api/_backend.ts; getApiBase (ui/app/utils/api.ts) chooses base URL.
+- Password photos are processed transiently; only fingerprint vectors are stored.
+- Uploaded person images persist under api/images (mapped to Docker volume api_images).
+
+Troubleshooting:
+- If DB connection fails, inspect API container logs and docker-compose service health.
+- If browser camera fails, confirm device permissions.
+
+---
+
+## Contributing
+
+Thanks for considering a contribution. Please open issues for bugs or feature requests and follow any CONTRIBUTING/CODE_OF_CONDUCT files if present.
+
+When creating bug reports, be reproducible and specific (versions, steps, logs).
+
+---
+
+## License
+
+This project is licensed under the MIT license. See LICENSE for details.
+
+---
+
+## Acknowledgements
+
+Thanks to resources and examples used during development:
+- README & template inspiration: dec0dOS amazing-github-template
+- Fingerprint extraction: MediaPipe-style pose/hand landmark approaches
+- Docker + FastAPI + Next.js examples
