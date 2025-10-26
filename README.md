@@ -1,5 +1,7 @@
 # FridgeOrFoe
 
+![Fridge or Foe UI](images/readme-ui.png)
+
 FridgeOrFoe is a small prototype demonstrating a server-backed smart lock for a shared fridge. It includes:
 - A FastAPI backend that stores inventory items and manages a short unlock window.
 - A browser UI (Next.js) for adding/removing items and capturing/uploading photos.
