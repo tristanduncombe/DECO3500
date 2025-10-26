@@ -1,5 +1,7 @@
 # FridgeOrFoe
 
+_Shared fridges often suffer petty food theft and low social interaction; this project deters casual theft while encouraging playful, meaningful interactions around food._
+
 ![Fridge or Foe UI](images/readme-ui.png)
 
 FridgeOrFoe is a small prototype demonstrating a server-backed smart lock for a shared fridge. It includes:
