@@ -12,13 +12,11 @@
   ·
   <a href="https://github.com/tdunc/FridgeOrFoe/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=feat%3A+">Request a Feature</a>
   ·
-  <a href="https://github.com/tdunc/FridgeOrFoe/discussions">Ask a Question</a>
+  <a href="https://github.com/tristanduncombe/FridgeOrFoe/discussions">Ask a Question</a>
 </div>
 
 <div align="center">
 <br />
-[![license](https://img.shields.io/github/license/tdunc/FridgeOrFoe.svg?style=flat-square)](LICENSE)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg?style=flat-square)](https://github.com/tdunc/FridgeOrFoe/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
 </div>
 
 <details open="open">
@@ -30,8 +28,6 @@
 - [API endpoints (examples)](#api-endpoints-examples)
 - [Architecture & key files](#architecture--key-files)
 - [Development notes](#development-notes)
-- [Contributing](#contributing)
-- [License](#license)
 - [Acknowledgements](#acknowledgements)
 
 </details>
@@ -41,6 +37,9 @@
 ## About
 
 Shared fridges often suffer petty food theft and low social interaction. FridgeOrFoe is a small prototype that deters casual theft and encourages playful, meaningful interactions around food. It uses a short-lived server-side unlock window and a human-pose "password" assembled from three photos.
+
+To use the project, navigate to the (cloud deployed version)[https://fridge.tristanduncombe.com] and click "Put In". This will start your computer's camera and enable you to to take photos of your gestures. After you complete your poses, take a photo with your food, and you can put it away! If you are running a Raspberry Pi polling the backend, it will unlock (please note the development notes below)! To unlock do the three poses you 
+
 
 Key behavior:
 - Add an item: upload a person photo + three password photos → backend persists person image, extracts pose/hand landmarks, builds compact fingerprints and opens the lock briefly.
@@ -91,7 +90,7 @@ Services:
 - Attempt unlock for item
   POST /inventory/items/{id}/unlock
 
-(See api/main.py for configurable UNLOCK_WINDOW_SECONDS and UNLOCK_THRESHOLD.)
+(See api/main.py for configurable `UNLOCK_WINDOW_SECONDS` and `UNLOCK_THRESHOLD`.)
 
 ---
 
@@ -111,24 +110,11 @@ Services:
 - UI proxies API requests via ui/app/api/_backend.ts; getApiBase (ui/app/utils/api.ts) chooses base URL.
 - Password photos are processed transiently; only fingerprint vectors are stored.
 - Uploaded person images persist under api/images (mapped to Docker volume api_images).
+- The Raspberry Pi client only supports Raspberry Pi 5+ due to the changes to the GPIO libraries in the Pi 5.
 
 Troubleshooting:
 - If DB connection fails, inspect API container logs and docker-compose service health.
 - If browser camera fails, confirm device permissions.
-
----
-
-## Contributing
-
-Thanks for considering a contribution. Please open issues for bugs or feature requests and follow any CONTRIBUTING/CODE_OF_CONDUCT files if present.
-
-When creating bug reports, be reproducible and specific (versions, steps, logs).
-
----
-
-## License
-
-This project is licensed under the MIT license. See LICENSE for details.
 
 ---
 
