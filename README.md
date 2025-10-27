@@ -38,7 +38,7 @@
 
 Shared fridges often suffer petty food theft and low social interaction. FridgeOrFoe is a small prototype that deters casual theft and encourages playful, meaningful interactions around food. It uses a short-lived server-side unlock window and a human-pose "password" assembled from three photos.
 
-To use the project, navigate to the (cloud deployed version)[https://fridge.tristanduncombe.com] and click "Put In". This will start your computer's camera and enable you to to take photos of your gestures. After you complete your poses, take a photo with your food, and you can put it away! If you are running a Raspberry Pi polling the backend, it will unlock (please note the development notes below)! To unlock do the three poses you 
+To use the project, navigate to the (cloud deployed version)[https://fridge.tristanduncombe.com] and click "Put In". This will start your computer's camera and enable you to to take photos of your gestures. After you complete your poses, take a photo with your food, and you can put it away! If you are running a Raspberry Pi polling the backend, it will unlock (please note the development notes below)! To unlock do the three poses you used to lock the item and it should unlock or tell you the similarity to the original pose (this was for development only, and will not be used in production).
 
 
 Key behavior:
