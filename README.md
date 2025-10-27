@@ -38,7 +38,7 @@
 
 Shared fridges often suffer petty food theft and low social interaction. FridgeOrFoe is a small prototype that deters casual theft and encourages playful, meaningful interactions around food. It uses a short-lived server-side unlock window and a human-pose "password" assembled from three photos.
 
-To use the project, navigate to the (cloud deployed version)[https://fridge.tristanduncombe.com] and click "Put In". This will start your computer's camera and enable you to to take photos of your gestures. After you complete your poses, take a photo with your food, and you can put it away! If you are running a Raspberry Pi polling the backend, it will unlock (please note the development notes below)! To unlock do the three poses you used to lock the item and it should unlock or tell you the similarity to the original pose (this was for development only, and will not be used in production).
+To use the project, navigate to the [cloud deployed version](https://fridge.tristanduncombe.com) and click "Put In". This will start your computer's camera and enable you to to take photos of your gestures. After you complete your poses, take a photo with your food, and you can put it away! If you are running a Raspberry Pi polling the backend, it will unlock (please note the development notes below)! To unlock do the three poses you used to lock the item and it should unlock or tell you the similarity to the original pose (this was for development only, and will not be used in production).
 
 
 Key behavior:
@@ -53,7 +53,7 @@ Fingerprint logic lives in api/src/password.py.
 
 - FastAPI (backend)
 - Next.js (UI)
-- SQLite / local persistence (backend)
+- Postgres / local persistence (backend)
 - Docker / docker-compose for orchestration
 
 ---
@@ -72,6 +72,20 @@ Services:
 - UI:  http://localhost:3000
 
 ---
+
+## Running Pi Client
+
+To run the Raspberry Pi client, you need to run the client
+
+```sh
+# You may need sudo dependent on pi config.
+python3 client/main.py
+```
+
+It must be a Raspberry Pi 5 and you should have your device (solenoid valve) using GPIO pin 18. See [main.py](client/main.py) for the specific PI configuration that was run for the demonstration. [Or reach out](https://github.com/tristanduncombe/FridgeOrFoe/discussions)!
+
+---
+
 
 ## API endpoints (examples)
 
@@ -105,7 +119,8 @@ Services:
 
 ---
 
-## Development notes
+## Development notesdemonstration.
+
 
 - UI proxies API requests via ui/app/api/_backend.ts; getApiBase (ui/app/utils/api.ts) chooses base URL.
 - Password photos are processed transiently; only fingerprint vectors are stored.
