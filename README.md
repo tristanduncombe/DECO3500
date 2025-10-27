@@ -1,6 +1,6 @@
 <h1 align="center">
   <a href=".">
-    <img src="images/readme-ui.png" alt="FridgeOrFoe" width="125" height="125">
+    <img src="images/readme-ui.png" alt="FridgeOrFoe" width="500" height="500">
   </a>
 </h1>
 
